@@ -1,0 +1,41 @@
+from setuptools import find_packages, setup
+
+with open('nmacom/_meta.py') as version_file:
+    exec(version_file.read())
+
+with open('README.md') as r:
+    readme = r.read()
+
+setup(
+    name='nmacom',
+    description=readme,
+    version=__version__,
+    packages=find_packages(exclude=('tests')),
+    install_requires=[
+        # Unioncom
+        'matplotlib',
+        'numpy',
+        'scipy',
+        'sklearn',
+        'torch',
+        'torchvision',
+        'umap',
+        'unioncom',
+    ],
+    extras_require={
+        'dev': [
+            'flake8',
+            'flake8-docstrings',
+            'flake8-import-order',
+            'pip-tools',
+            'pytest',
+            'pytest-cov',
+        ],
+        'notebooks': [
+            'anndata',
+            'pandas',
+            'git+https://github.com/Oafish1/WR2MD',
+        ],
+    },
+	tests_require=['pytest'],
+)
