@@ -1,3 +1,4 @@
+from itertools import product
 import time
 
 import numpy as np
@@ -10,7 +11,7 @@ from unioncom.utils import geodesic_distances, init_random_seed, joint_probabili
 
 from .maninetcluster import manifold_nonlinear
 from .maninetcluster.correspondence import Correspondence
-from .maninetcluster.neighborhood import neighbor_graph
+from .maninetcluster.neighborhood import laplacian, neighbor_graph
 
 
 class NMAcom(uc.UnionCom):
@@ -35,6 +36,8 @@ class NMAcom(uc.UnionCom):
             raise Exception('integration_type error! Enter MultiOmics or BatchCorrect.')
         if self.distance_mode != 'geodesic' and self.distance_mode not in distance_modes:
             raise Exception('distance_mode error! Enter a correct distance_mode.')
+        if self.project_mode not in ('tsne', 'barycentric', 'nlma'):
+            raise Exception("Choose correct project_mode: 'tsne, barycentric, or nlma'")
 
         time1 = time.time()
         init_random_seed(self.manual_seed)
@@ -74,19 +77,19 @@ class NMAcom(uc.UnionCom):
                     self.cor_dist.append(cor_distances)
 
         # Find correspondence between samples
-        pairs_x = []
-        pairs_y = []
         match_result = self.match(dataset=dataset)
-        for i in range(dataset_num-1):
-            cost = np.max(match_result[i])-match_result[i]
-            # NMAcom modification for priors
-            row_ind, col_ind = linear_sum_assignment(cost)
-            pairs_x.append(row_ind)
-            pairs_y.append(col_ind)
 
         #  Project to common embedding
         if self.project_mode == 'tsne':
-            # NMAcom modification for NLMA
+            pairs_x = []
+            pairs_y = []
+            for i in range(dataset_num-1):
+                cost = np.max(match_result[i])-match_result[i]
+                # NMAcom modification for priors
+                row_ind, col_ind = linear_sum_assignment(cost)
+                pairs_x.append(row_ind)
+                pairs_y.append(col_ind)
+
             P_joint = []
             time1 = time.time()
             for i in range(dataset_num):
@@ -100,22 +103,72 @@ class NMAcom(uc.UnionCom):
             integrated_data = self.project_barycentric(dataset, match_result)
         elif self.project_mode == 'nlma':
             integrated_data = self.project_nlma(dataset, match_result)
-        else:
-            raise Exception("Choose correct project_mode: 'tsne, barycentric, or nlma'")
 
         print('---------------------------------')
-        print('unionCom Done!')
+        print('NMAcom Done!')
         time2 = time.time()
         print('time:', time2-time1, 'seconds')
 
         return integrated_data
 
-    def project_nlma(self, dataset, F):
-        """Projects using the `F` matrix as correspondence using NLMA"""
+    def match(self, dataset):
+        """
+        Find correspondence between multi-omics datasets
+        """
+
+        dataset_num = len(dataset)
+        N = np.int(np.max([l.shape[0] for l in dataset]))
+
+        if self.project_mode == 'nlma':
+            cor_pairs = dataset_num * [dataset_num * [None]]
+            for i in range(dataset_num):
+                for j in range(i, dataset_num):
+                    print("---------------------------------")
+                    print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
+                    F = self.Prime_Dual([self.dist[i], self.dist[i]],
+                                        dx=self.col[i],
+                                        dy=self.col[j])
+                    cor_pairs[i][j] = F
+
+                    # Save some computation
+                    if i != j:
+                        cor_pairs[j][i] = F.T
+        else:
+            cor_pairs = []
+            for i in range(dataset_num-1):
+                print("---------------------------------")
+                print("Find correspondence between Dataset {} and Dataset {}".format(i+1, \
+                    len(dataset)))
+                if self.integration_type == "MultiOmics":
+                    cor_pairs.append(self.Prime_Dual([self.dist[i], self.dist[-1]], dx=self.col[i], dy=self.col[-1]))
+                else:
+                    cor_pairs.append(self.Prime_Dual(self.cor_dist[i]))
+
+        print("Finished Matching!")
+        return cor_pairs
+
+    def project_nlma(self, dataset, F_list):
+        """Projects using `F` matrices as correspondence using NLMA"""
         assert len(dataset) == 2, 'NLMA only supports 2 datasets'
 
-        corr = Correspondence(matrix=np.array(F[0]))
-        num_dims = 10
-        W = [neighbor_graph(data, k=10) for data in dataset]
-        # X,Y,corr,num_dims,Wx,Wy,mu=0.9,eps=1e-8
+        mu = .9
+        eps = 1e-8
+
+        # Set up manifold
+        # L = _manifold_setup(*W_collection, F[0], mu)
+        #Wxx = mu * (Wx.sum() + Wy.sum()) / (2 * Wxy.sum()) * Wxy
+        dim = len(F_list)
+        W = F_list
+
+        coef = (1-mu) * np.ones((dim, dim))
+        np.fill_diagonal(coef, mu)
+        for i, j in product(*(2 * [range(dim)])):
+            W[i][j] *= coef[i, j]
+        W = np.asarray(np.bmat(W))
+        L = laplacian(W)
+
+        # Perform decomposition
+        # return _manifold_decompose(L,X.shape[0],Y.shape[0],self.output_dim,eps)
+        # TODO
+
         return manifold_nonlinear(*dataset, corr, num_dims, *W)
