@@ -9,9 +9,7 @@ import torch
 import unioncom.UnionCom as uc
 from unioncom.utils import geodesic_distances, init_random_seed, joint_probabilities
 
-from .maninetcluster import manifold_nonlinear
-from .maninetcluster.correspondence import Correspondence
-from .maninetcluster.neighborhood import laplacian, neighbor_graph
+from .maninetcluster.neighborhood import laplacian
 
 
 class NMAcom(uc.UnionCom):
@@ -112,12 +110,9 @@ class NMAcom(uc.UnionCom):
         return integrated_data
 
     def match(self, dataset):
-        """
-        Find correspondence between multi-omics datasets
-        """
+        """Find correspondence between multi-omics datasets"""
 
         dataset_num = len(dataset)
-        N = np.int(np.max([l.shape[0] for l in dataset]))
 
         if self.project_mode == 'nlma':
             cor_pairs = dataset_num * [dataset_num * [None]]
@@ -137,10 +132,11 @@ class NMAcom(uc.UnionCom):
             cor_pairs = []
             for i in range(dataset_num-1):
                 print("---------------------------------")
-                print("Find correspondence between Dataset {} and Dataset {}".format(i+1, \
-                    len(dataset)))
+                print(f'Find correspondence between Dataset {i + 1} and Dataset {len(dataset)}')
                 if self.integration_type == "MultiOmics":
-                    cor_pairs.append(self.Prime_Dual([self.dist[i], self.dist[-1]], dx=self.col[i], dy=self.col[-1]))
+                    cor_pairs.append(self.Prime_Dual([self.dist[i], self.dist[-1]],
+                                                     dx=self.col[i],
+                                                     dy=self.col[-1]))
                 else:
                     cor_pairs.append(self.Prime_Dual(self.cor_dist[i]))
 
@@ -148,18 +144,21 @@ class NMAcom(uc.UnionCom):
         return cor_pairs
 
     def project_nlma(self, dataset, F_list):
-        """Projects using `F` matrices as correspondence using NLMA"""
+        """
+        Projects using `F` matrices as correspondence using NLMA, heavily
+        relies on methodology and code from
+        https://github.com/daifengwanglab/ManiNetCluster
+        """
         assert len(dataset) == 2, 'NLMA only supports 2 datasets'
 
         mu = .9
         eps = 1e-8
 
         # Set up manifold
-        # L = _manifold_setup(*W_collection, F[0], mu)
-        #Wxx = mu * (Wx.sum() + Wy.sum()) / (2 * Wxy.sum()) * Wxy
         dim = len(F_list)
         W = F_list
 
+        # TODO: Verify coef structure for >2 modalities
         coef = (1-mu) * np.ones((dim, dim))
         np.fill_diagonal(coef, mu)
         for i, j in product(*(2 * [range(dim)])):
@@ -168,7 +167,26 @@ class NMAcom(uc.UnionCom):
         L = laplacian(W)
 
         # Perform decomposition
-        # return _manifold_decompose(L,X.shape[0],Y.shape[0],self.output_dim,eps)
-        # TODO
+        vec_func = None
 
-        return manifold_nonlinear(*dataset, corr, num_dims, *W)
+        vals, vecs = np.linalg.eig(L)
+        idx = np.argsort(vals)
+        for i in range(len(idx)):
+            if vals[idx[i]] >= eps:
+                break
+        vecs = vecs.real[:, idx[i:]]
+        if vec_func:
+            vecs = vec_func(vecs)
+
+        for i in range(vecs.shape[1]):
+            vecs[:, i] /= np.linalg.norm(vecs[:, i])
+
+        maps = []
+        min_idx = 0
+        for data in dataset:
+            dx = data.shape[0]
+            map = vecs[min_idx:min_idx + dx, :self.output_dim]
+            maps.append(map)
+            min_idx += dx
+
+        return tuple(maps)

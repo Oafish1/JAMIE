@@ -33,8 +33,9 @@ setup(
         ],
         'notebooks': [
             'anndata',
+            'jupyterlab',
+            'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD',
             'pandas',
-            'git+https://github.com/Oafish1/WR2MD',
         ],
     },
 	tests_require=['pytest'],
