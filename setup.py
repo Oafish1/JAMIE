@@ -1,13 +1,13 @@
 from setuptools import find_packages, setup
 
-with open('nmacom/_meta.py') as version_file:
+with open('commando/_meta.py') as version_file:
     exec(version_file.read())
 
 with open('README.md') as r:
     readme = r.read()
 
 setup(
-    name='nmacom',
+    name='ComManDo',
     description=readme,
     version=__version__,
     packages=find_packages(exclude=('tests')),
