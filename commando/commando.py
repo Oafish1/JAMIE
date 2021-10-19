@@ -15,12 +15,19 @@ from .utilities import time_logger
 
 class ComManDo(uc.UnionCom):
     """Adaptation of https://github.com/caokai1073/UnionCom by caokai1073"""
-    def __init__(self, gradient_reduction=-1, gradient_reduction_threshold=.99, **kwargs):
+    def __init__(
+        self,
+        gradient_reduction=-1,
+        gradient_reduction_threshold=.99,
+        two_step_num=-1,
+        **kwargs,
+    ):
         if 'project_mode' not in kwargs:
             kwargs['project_mode'] = 'nlma'
 
         self.gradient_reduction = gradient_reduction
         self.gradient_reduction_threshold = gradient_reduction_threshold
+        self.two_step_num = two_step_num
 
         super().__init__(**kwargs)
 
@@ -40,7 +47,11 @@ class ComManDo(uc.UnionCom):
         if self.distance_mode != 'geodesic' and self.distance_mode not in distance_modes:
             raise Exception('distance_mode error! Enter a correct distance_mode.')
         if self.project_mode not in ('tsne', 'barycentric', 'nlma'):
-            raise Exception("Choose correct project_mode: 'tsne, barycentric, or nlma'")
+            raise Exception("Choose correct project_mode: 'tsne, barycentric, or nlma'.")
+        if self.project_mode == 'nlma' and self.integration_type == 'BatchCorrect':
+            raise Exception(
+                "project_mode: 'nlma' is incompatible with integration_type: 'BatchCorrect'."
+            )
 
         time1 = time.time()
         init_random_seed(self.manual_seed)
@@ -49,6 +60,8 @@ class ComManDo(uc.UnionCom):
         for i in range(dataset_num):
             self.row.append(np.shape(dataset[i])[0])
             self.col.append(np.shape(dataset[i])[1])
+        if self.project_mode == 'nlma' and not (np.array(self.row) == self.row[0]).all():
+            raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
         # Compute the distance matrix
         print('Shape of Raw data')
@@ -116,7 +129,7 @@ class ComManDo(uc.UnionCom):
 
     def match(self, dataset):
         """Find correspondence between multi-omics datasets"""
-
+        print("use device:", self.device)
         dataset_num = len(dataset)
 
         if self.project_mode == 'nlma':
@@ -125,9 +138,78 @@ class ComManDo(uc.UnionCom):
                 for j in range(i, dataset_num):
                     print("---------------------------------")
                     print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
-                    F = self.Prime_Dual([self.dist[i], self.dist[j]],
-                                        dx=self.col[i],
-                                        dy=self.col[j])
+                    if self.two_step_num != -1:
+                        # With ``self.two_step_num`` == 1, if run to convergence,
+                        # two-step should be equivalent to standard.
+                        # First step
+                        # Create groupings
+                        # TODO: KNN
+                        idx_all = np.arange(self.row[i])
+                        np.random.shuffle(idx_all)
+                        idx_groups = np.array_split(idx_all, self.two_step_num)
+
+                        large_F_block = [
+                            self.two_step_num * [None]
+                            for _ in range(self.two_step_num)
+                        ]
+                        for k, l in product(*(2 * [range(self.two_step_num)])):
+                            large_F_block[k][l] = np.zeros(
+                                (len(idx_groups[k]), len(idx_groups[l]))
+                            )
+                        for k, idx in enumerate(idx_groups):
+                            print(f'Calculating small F #{k + 1}')
+                            large_F_block[k][k] = self.Prime_Dual(
+                                [self.dist[i][idx][:, idx], self.dist[j][idx][:, idx]],
+                                dx=len(idx),
+                                dy=len(idx),
+                            )
+
+                        # Reconstruct and unshuffle large F
+                        # for k, l in product(*(2 * [range(self.two_step_num)])):
+                        #     print(k, l)
+                        #     print(large_F_block[k][l].shape)
+                        F = np.block(large_F_block)
+                        F = F[idx_all][:, idx_all]
+
+                        # Second step
+                        # Compute representative points (distance)
+                        rep_transform = np.zeros((self.row[i], self.two_step_num))
+                        for k, idx in enumerate(idx_groups):
+                            rep_transform[idx, k] = 1
+
+                        def shrink_matrix(m):
+                            return np.dot(
+                                np.transpose(rep_transform),
+                                np.dot(m, rep_transform),
+                            )
+
+                        def expand_matrix(m):
+                            return np.dot(
+                                rep_transform,
+                                np.dot(m, np.transpose(rep_transform)),
+                            )
+
+                        i_dist = shrink_matrix(self.dist[i])
+                        j_dist = shrink_matrix(self.dist[j])
+
+                        # Calculate inter-pseudo F
+                        # TODO: Perhaps more advanced aggregation method?
+                        print('Calculating large F')
+                        rep_F = self.Prime_Dual(
+                            [i_dist, j_dist],
+                            dx=self.two_step_num,
+                            dy=self.two_step_num,
+                        )
+                        rep_F = expand_matrix(rep_F)
+
+                        # Add inter-pseudocell data
+                        F += rep_F
+                    else:
+                        F = self.Prime_Dual(
+                            [self.dist[i], self.dist[j]],
+                            dx=self.col[i],
+                            dy=self.col[j],
+                        )
                     cor_pairs[i][j] = F
                     if i != j:
                         cor_pairs[j][i] = F.T
@@ -149,8 +231,6 @@ class ComManDo(uc.UnionCom):
 
     def Prime_Dual(self, dist, dx=None, dy=None):
         """Prime dual combined with Adam algorithm to find the local optimal soluation"""
-        print("use device:", self.device)
-
         if self.integration_type == "MultiOmics":
             Kx = dist[0]
             Ky = dist[1]
