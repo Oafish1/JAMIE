@@ -169,7 +169,8 @@ class ComManDo(uc.UnionCom):
                         #     print(k, l)
                         #     print(large_F_block[k][l].shape)
                         F = np.block(large_F_block)
-                        F = F[idx_all][:, idx_all]
+                        idx_all_inv = np.argsort(idx_all)
+                        F = F[idx_all_inv][:, idx_all_inv]
 
                         # Second step
                         # Compute representative points (distance)
@@ -324,11 +325,16 @@ class ComManDo(uc.UnionCom):
 
             if self.integration_type == "MultiOmics":
                 grad = (
+                    # Store FKy as F2 and factor
                     4*torch.mm(F, torch.mm(Ky, torch.mm(torch.t(F), torch.mm(F, Ky))))
+                    # In and Im sideways cast
                     - 4*a*torch.mm(Kx, torch.mm(F, Ky)) + torch.mm(Mu, torch.t(In))
+                    # Same here
                     + torch.mm(Im, torch.t(Lambda))
                     + self.rho * (
+                        # In * In.t is just nxn mat filled with n
                         torch.mm(F, torch.mm(In, torch.t(In)))
+                        # Factor Im
                         - torch.mm(Im, torch.t(In))
                         + torch.mm(Im, torch.mm(torch.t(Im), F))
                         + torch.mm(Im, torch.t(S-In))
