@@ -19,6 +19,7 @@ class ComManDo(uc.UnionCom):
         self,
         gradient_reduction=-1,
         gradient_reduction_threshold=.99,
+        epoch_pd_large=None,
         two_step_num=-1,
         **kwargs,
     ):
@@ -27,6 +28,8 @@ class ComManDo(uc.UnionCom):
 
         self.gradient_reduction = gradient_reduction
         self.gradient_reduction_threshold = gradient_reduction_threshold
+
+        self.epoch_pd_large = epoch_pd_large
         self.two_step_num = two_step_num
 
         super().__init__(**kwargs)
@@ -74,10 +77,10 @@ class ComManDo(uc.UnionCom):
 
             if self.distance_mode == 'geodesic':
                 distances = geodesic_distances(dataset[i], self.kmax)
-                self.dist.append(np.array(distances))
+                distances = np.array(distances)
             else:
                 distances = pairwise_distances(dataset[i], metric=self.distance_mode)
-                self.dist.append(distances)
+            self.dist.append(torch.from_numpy(distances).float().to(self.device))
 
             if self.integration_type == 'BatchCorrect':
                 if self.distance_mode not in distance_modes:
@@ -101,7 +104,7 @@ class ComManDo(uc.UnionCom):
             pairs_y = []
             for i in range(dataset_num-1):
                 cost = np.max(match_result[i])-match_result[i]
-                # NMAcom modification for priors
+                # TODO: modification for priors
                 row_ind, col_ind = linear_sum_assignment(cost)
                 pairs_x.append(row_ind)
                 pairs_y.append(col_ind)
@@ -120,23 +123,23 @@ class ComManDo(uc.UnionCom):
         elif self.project_mode == 'nlma':
             integrated_data = self.project_nlma(dataset, match_result)
 
-        print('---------------------------------')
-        print('NMAcom Done!')
+        print('-' * 33)
+        print('ComManDo Done!')
         time2 = time.time()
-        print('time:', time2-time1, 'seconds')
+        print('Time:', time2-time1, 'seconds')
 
         return integrated_data
 
     def match(self, dataset):
         """Find correspondence between multi-omics datasets"""
-        print("use device:", self.device)
+        print('Device:', self.device)
         dataset_num = len(dataset)
 
         if self.project_mode == 'nlma':
             cor_pairs = dataset_num * [dataset_num * [None]]
             for i in range(dataset_num):
                 for j in range(i, dataset_num):
-                    print("---------------------------------")
+                    print('-' * 33)
                     print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
                     if self.two_step_num != -1:
                         # With ``self.two_step_num`` == 1, if run to convergence,
@@ -144,50 +147,42 @@ class ComManDo(uc.UnionCom):
                         # First step
                         # Create groupings
                         # TODO: KNN
-                        idx_all = np.arange(self.row[i])
+                        idx_all = torch.arange(self.row[i])
                         np.random.shuffle(idx_all)
                         idx_groups = np.array_split(idx_all, self.two_step_num)
 
-                        large_F_block = [
-                            self.two_step_num * [None]
-                            for _ in range(self.two_step_num)
-                        ]
-                        for k, l in product(*(2 * [range(self.two_step_num)])):
-                            large_F_block[k][l] = np.zeros(
-                                (len(idx_groups[k]), len(idx_groups[l]))
-                            )
+                        F_diag = []
                         for k, idx in enumerate(idx_groups):
-                            print(f'Calculating small F #{k + 1}')
-                            large_F_block[k][k] = self.Prime_Dual(
+                            print(f'Calculating intra-group F #{k + 1}')
+                            F_diag.append(self.Prime_Dual(
                                 [self.dist[i][idx][:, idx], self.dist[j][idx][:, idx]],
                                 dx=len(idx),
                                 dy=len(idx),
-                            )
+                            ))
 
+                        print('Constructing large F')
                         # Reconstruct and unshuffle large F
-                        # for k, l in product(*(2 * [range(self.two_step_num)])):
-                        #     print(k, l)
-                        #     print(large_F_block[k][l].shape)
-                        F = np.block(large_F_block)
+                        F = torch.block_diag(*F_diag)
                         idx_all_inv = np.argsort(idx_all)
                         F = F[idx_all_inv][:, idx_all_inv]
 
                         # Second step
+                        print('Calculating inter-group F')
                         # Compute representative points (distance)
-                        rep_transform = np.zeros((self.row[i], self.two_step_num))
+                        rep_transform = torch.zeros((self.row[i], self.two_step_num))
                         for k, idx in enumerate(idx_groups):
                             rep_transform[idx, k] = 1
 
                         def shrink_matrix(m):
-                            return np.dot(
-                                np.transpose(rep_transform),
-                                np.dot(m, rep_transform),
+                            return torch.mm(
+                                torch.t(rep_transform),
+                                torch.mm(m, rep_transform),
                             )
 
                         def expand_matrix(m):
-                            return np.dot(
+                            return torch.mm(
                                 rep_transform,
-                                np.dot(m, np.transpose(rep_transform)),
+                                torch.mm(m, torch.t(rep_transform)),
                             )
 
                         i_dist = shrink_matrix(self.dist[i])
@@ -195,11 +190,11 @@ class ComManDo(uc.UnionCom):
 
                         # Calculate inter-pseudo F
                         # TODO: Perhaps more advanced aggregation method?
-                        print('Calculating large F')
                         rep_F = self.Prime_Dual(
                             [i_dist, j_dist],
                             dx=self.two_step_num,
                             dy=self.two_step_num,
+                            epoch_override=self.epoch_pd_large,
                         )
                         rep_F = expand_matrix(rep_F)
 
@@ -218,7 +213,7 @@ class ComManDo(uc.UnionCom):
         else:
             cor_pairs = []
             for i in range(dataset_num-1):
-                print("---------------------------------")
+                print('-' * 33)
                 print(f'Find correspondence between Dataset {i + 1} and Dataset {len(dataset)}')
                 if self.integration_type == "MultiOmics":
                     cor_pairs.append(self.Prime_Dual([self.dist[i], self.dist[-1]],
@@ -230,7 +225,7 @@ class ComManDo(uc.UnionCom):
         print("Finished Matching!")
         return cor_pairs
 
-    def Prime_Dual(self, dist, dx=None, dy=None):
+    def Prime_Dual(self, dist, dx=None, dy=None, epoch_override=None):
         """Prime dual combined with Adam algorithm to find the local optimal soluation"""
         if self.integration_type == "MultiOmics":
             Kx = dist[0]
@@ -238,8 +233,10 @@ class ComManDo(uc.UnionCom):
             N = np.int(np.maximum(len(Kx), len(Ky)))
             Kx = Kx / N
             Ky = Ky / N
-            Kx = torch.from_numpy(Kx).float().to(self.device)
-            Ky = torch.from_numpy(Ky).float().to(self.device)
+            # Kx = torch.from_numpy(Kx).float().to(self.device)
+            # Ky = torch.from_numpy(Ky).float().to(self.device)
+            Kx = Kx.float().to(self.device)
+            Ky = Ky.float().to(self.device)
             a = np.sqrt(dy/dx)
             m = np.shape(Kx)[0]
             n = np.shape(Ky)[0]
@@ -248,10 +245,11 @@ class ComManDo(uc.UnionCom):
             m = np.shape(dist)[0]
             n = np.shape(dist)[1]
             a = 1
-            dist = torch.from_numpy(dist).float().to(self.device)
+            # dist = torch.from_numpy(dist).float().to(self.device)
+            dist = dist.float().to(self.device)
 
-        F = np.zeros((m, n))
-        F = torch.from_numpy(F).float().to(self.device)
+        # F = np.zeros((m, n))
+        F = torch.zeros((m, n)).float().to(self.device)
         Im = torch.ones((m, 1)).float().to(self.device)
         In = torch.ones((n, 1)).float().to(self.device)
         Lambda = torch.zeros((n, 1)).float().to(self.device)
@@ -267,7 +265,10 @@ class ComManDo(uc.UnionCom):
         i = 0
         timer = time_logger(verbose=False)
 
-        while(i < self.epoch_pd):
+        epochs = self.epoch_pd
+        if self.epoch_override is not None:
+            epochs = self.epoch_override
+        while(i < epochs):
             timer.log('Beginning')
             if self.gradient_reduction > 0:
                 # Assumes that ``self.integration_type`` is ``MultiOmics``
@@ -404,15 +405,15 @@ class ComManDo(uc.UnionCom):
                 if self.integration_type == "MultiOmics":
                     norm2 = torch.norm(a*Kx - torch.mm(torch.mm(F, Ky), torch.t(F)))
                     print("epoch:[{:d}/{:d}] err:{:.4f} alpha:{:.4f}"
-                          .format(i+1, self.epoch_pd, norm2.data.item(), a))
+                          .format(i+1, epochs, norm2.data.item(), a))
                 else:
                     norm2 = torch.norm(dist*F)
                     print("epoch:[{:d}/{:d}] err:{:.4f}"
-                          .format(i+1, self.epoch_pd, norm2.data.item()))
+                          .format(i+1, epochs, norm2.data.item()))
 
             timer.log('Delay and CLI')
 
-        F = F.cpu().numpy()
+        # F = F.cpu().numpy()
         return F
 
     def project_nlma(self, dataset, F_list):
@@ -423,6 +424,8 @@ class ComManDo(uc.UnionCom):
         """
         assert len(dataset) == 2, 'NLMA only supports 2 datasets'
 
+        print('-' * 33)
+        print('Performing NLMA')
         mu = .9
         eps = 1e-8
 
@@ -431,17 +434,23 @@ class ComManDo(uc.UnionCom):
         W = F_list
 
         # TODO: Verify coef structure for >2 modalities
-        coef = (1-mu) * np.ones((dim, dim))
-        np.fill_diagonal(coef, mu)
+        print('Constructing W')
+        coef = (1-mu) * torch.ones((dim, dim))
+        coef = coef.fill_diagonal_(mu)
         for i, j in product(*(2 * [range(dim)])):
             W[i][j] *= coef[i, j]
-        W = np.asarray(np.bmat(W))
+        W = torch.from_numpy(np.bmat(W)).float().to(self.device)
+
+        print('Computing Laplacian')
         L = laplacian(W)
 
         # Perform decomposition
         vec_func = None
 
+        print('Calculating eigenvectors')
         vals, vecs = np.linalg.eig(L)
+
+        print('Filtering eigenvectors')
         idx = np.argsort(vals)
         for i in range(len(idx)):
             if vals[idx[i]] >= eps:
@@ -453,6 +462,7 @@ class ComManDo(uc.UnionCom):
         for i in range(vecs.shape[1]):
             vecs[:, i] /= np.linalg.norm(vecs[:, i])
 
+        print('Perfoming mapping')
         maps = []
         min_idx = 0
         for data in dataset:
