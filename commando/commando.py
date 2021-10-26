@@ -153,7 +153,7 @@ class ComManDo(uc.UnionCom):
                     if self.two_step_num_partitions is not None:
                         # First step
                         # Create groupings
-                        idx_all = torch.arange(self.row[i])
+                        idx_all = np.arange(self.row[i])
                         # TODO: Work on all datasets
                         if self.two_step_aggregation == 'agglomerative':
                             agg_groups = (
@@ -269,7 +269,9 @@ class ComManDo(uc.UnionCom):
         # F = np.zeros((m, n))
         F = torch.zeros((m, n)).float().to(self.device)
         Im = torch.ones((m, 1)).float().to(self.device)
+        # Imm = torch.ones((m, m)).float().to(self.device)
         In = torch.ones((n, 1)).float().to(self.device)
+        Inn = torch.ones((n, n)).float().to(self.device)
         Lambda = torch.zeros((n, 1)).float().to(self.device)
         Mu = torch.zeros((m, 1)).float().to(self.device)
         S = torch.zeros((n, 1)).float().to(self.device)
@@ -339,7 +341,7 @@ class ComManDo(uc.UnionCom):
 
             if self.integration_type == 'MultiOmics':
                 # Simplified grad with casting (atol=2e-6)
-                # 100k iterations: 5.84e-5, 5.77e-5, 5.76e-5
+                # 100k iterations: 5.52e-5, 5.48e-5, 5.50e-5
                 FKy = torch.mm(F, Ky)
                 grad = (
                     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
@@ -347,15 +349,34 @@ class ComManDo(uc.UnionCom):
                     + torch.mm(Mu, torch.t(In))
                     + torch.mm(Im, torch.t(Lambda))
                     + self.rho * (
-                        # Faster to multiply than to cast
-                        torch.mm(F, torch.mm(In, torch.t(In)))
+                        torch.mm(F, Inn)
                         + torch.mm(
                             Im,
+                            # Using premade Imm slows computation
                             torch.mm(torch.t(Im), F)
                             + torch.t(S - 2 * In)
                         )
                     )
                 )
+
+                # # Simplified grad with casting (atol=2e-6)
+                # # 100k iterations: 5.84e-5, 5.77e-5, 5.76e-5
+                # FKy = torch.mm(F, Ky)
+                # grad = (
+                #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
+                #     - 4 * a * torch.mm(Kx, FKy)
+                #     + torch.mm(Mu, torch.t(In))
+                #     + torch.mm(Im, torch.t(Lambda))
+                #     + self.rho * (
+                #         # Faster to multiply than to cast/repeat
+                #         torch.mm(F, torch.mm(In, torch.t(In)))
+                #         + torch.mm(
+                #             Im,
+                #             torch.t(S - 2 * In)
+                #         )
+                #         + torch.mm(Imm, F)
+                #     )
+                # )
 
                 # # Simplified grad (atol=1e-6)
                 # # 100k iterations: 6.16e-5, 6.08e-5, 6.08e-5
@@ -390,7 +411,7 @@ class ComManDo(uc.UnionCom):
                 #     )
                 # )
                 #
-                # if not torch.allclose(grad, original_grad, atol=2e-6):
+                # if not torch.allclose(grad, original_grad, atol=1e-5):
                 #     print(f'Max grad was  {torch.max(torch.abs(original_grad))}')
                 #     print(f'Mean grad was {torch.mean(torch.abs(original_grad))}')
                 #     assert False, f'Error was {torch.max(torch.abs(grad - original_grad))}'
