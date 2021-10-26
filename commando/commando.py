@@ -4,6 +4,7 @@ import time
 import numpy as np
 from scipy import sparse
 from scipy.optimize import linear_sum_assignment
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
 import torch
@@ -18,10 +19,12 @@ class ComManDo(uc.UnionCom):
     """Adaptation of https://github.com/caokai1073/UnionCom by caokai1073"""
     def __init__(
         self,
-        gradient_reduction=-1,
+        gradient_reduction=None,
         gradient_reduction_threshold=.99,
-        epoch_pd_large=None,
-        two_step_num=-1,
+        prime_dual_verbose=False,
+        two_step_aggregation=None,
+        two_step_num_partitions=None,
+        two_step_pd_large=None,
         **kwargs,
     ):
         if 'project_mode' not in kwargs:
@@ -30,8 +33,11 @@ class ComManDo(uc.UnionCom):
         self.gradient_reduction = gradient_reduction
         self.gradient_reduction_threshold = gradient_reduction_threshold
 
-        self.epoch_pd_large = epoch_pd_large
-        self.two_step_num = two_step_num
+        self.two_step_pd_large = two_step_pd_large
+        self.two_step_aggregation = two_step_aggregation
+        self.two_step_num_partitions = two_step_num_partitions
+
+        self.prime_dual_verbose = prime_dual_verbose
 
         super().__init__(**kwargs)
 
@@ -56,6 +62,8 @@ class ComManDo(uc.UnionCom):
             raise Exception(
                 "project_mode: 'nlma' is incompatible with integration_type: 'BatchCorrect'."
             )
+        if self.gradient_reduction is not None and self.project_mode != 'MultiOmics':
+            raise Exception('gradient_reduction cannot be used with project_mode: MultiOmics.')
 
         time1 = time.time()
         init_random_seed(self.manual_seed)
@@ -142,15 +150,28 @@ class ComManDo(uc.UnionCom):
                 for j in range(i, dataset_num):
                     print('-' * 33)
                     print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
-                    if self.two_step_num != -1:
-                        # With ``self.two_step_num`` == 1, if run to convergence,
-                        # two-step should be equivalent to standard.
+                    if self.two_step_num_partitions is not None:
                         # First step
                         # Create groupings
-                        # TODO: KNN
                         idx_all = torch.arange(self.row[i])
-                        np.random.shuffle(idx_all)
-                        idx_groups = np.array_split(idx_all, self.two_step_num)
+                        # TODO: Work on all datasets
+                        if self.two_step_aggregation == 'agglomerative':
+                            agg_groups = (
+                                AgglomerativeClustering(
+                                    n_clusters=self.two_step_num_partitions,
+                                    affinity='precomputed',
+                                    linkage='average',
+                                )
+                                .fit(self.dist[i])
+                                .labels_
+                            )
+                            idx_groups = [
+                                idx_all[agg_groups == i]
+                                for i in range(self.two_step_num_partitions)
+                            ]
+                        else:
+                            np.random.shuffle(idx_all)
+                            idx_groups = np.array_split(idx_all, self.two_step_num_partitions)
 
                         F_diag = []
                         for k, idx in enumerate(idx_groups):
@@ -161,8 +182,8 @@ class ComManDo(uc.UnionCom):
                                 dy=len(idx),
                             ))
 
-                        print('Constructing large F')
                         # Reconstruct and unshuffle large F
+                        print('Constructing large F')
                         F = torch.block_diag(*F_diag)
                         idx_all_inv = np.argsort(idx_all)
                         F = F[idx_all_inv][:, idx_all_inv]
@@ -170,7 +191,7 @@ class ComManDo(uc.UnionCom):
                         # Second step
                         print('Calculating inter-group F')
                         # Compute representative points (distance)
-                        rep_transform = torch.zeros((self.row[i], self.two_step_num))
+                        rep_transform = torch.zeros((self.row[i], self.two_step_num_partitions))
                         for k, idx in enumerate(idx_groups):
                             rep_transform[idx, k] = 1
 
@@ -190,12 +211,11 @@ class ComManDo(uc.UnionCom):
                         j_dist = shrink_matrix(self.dist[j])
 
                         # Calculate inter-pseudo F
-                        # TODO: Perhaps more advanced aggregation method?
                         rep_F = self.Prime_Dual(
                             [i_dist, j_dist],
-                            dx=self.two_step_num,
-                            dy=self.two_step_num,
-                            epoch_override=self.epoch_pd_large,
+                            dx=self.two_step_num_partitions,
+                            dy=self.two_step_num_partitions,
+                            epoch_override=self.two_step_pd_large,
                         )
                         rep_F = expand_matrix(rep_F)
 
@@ -234,8 +254,6 @@ class ComManDo(uc.UnionCom):
             N = np.int(np.maximum(len(Kx), len(Ky)))
             Kx = Kx / N
             Ky = Ky / N
-            # Kx = torch.from_numpy(Kx).float().to(self.device)
-            # Ky = torch.from_numpy(Ky).float().to(self.device)
             Kx = Kx.float().to(self.device)
             Ky = Ky.float().to(self.device)
             a = np.sqrt(dy/dx)
@@ -246,7 +264,6 @@ class ComManDo(uc.UnionCom):
             m = np.shape(dist)[0]
             n = np.shape(dist)[1]
             a = 1
-            # dist = torch.from_numpy(dist).float().to(self.device)
             dist = dist.float().to(self.device)
 
         # F = np.zeros((m, n))
@@ -264,16 +281,14 @@ class ComManDo(uc.UnionCom):
         Snd_moment = torch.zeros((m, n)).float().to(self.device)
 
         i = 0
-        timer = time_logger(verbose=False)
+        timer = time_logger(record=self.prime_dual_verbose)
 
         epochs = self.epoch_pd
         if epoch_override is not None:
             epochs = epoch_override
         while(i < epochs):
-            timer.log('Beginning')
-            if self.gradient_reduction > 0:
-                # Assumes that ``self.integration_type`` is ``MultiOmics``
-                if self.gradient_reduction_threshold == -1:
+            if self.gradient_reduction is not None:
+                if self.gradient_reduction_threshold is not None:
                     # Statistical selection
                     m_reduction_map = torch.rand((self.gradient_reduction, m))
                     n_reduction_map = torch.rand((self.gradient_reduction, n))
@@ -302,15 +317,12 @@ class ComManDo(uc.UnionCom):
 
                 mm_to_reduced = lambda v: torch.mm(m_reduction_map, torch.mm(v, torch.t(m_reduction_map))) # noqa
                 m1_to_reduced = lambda v: torch.mm(m_reduction_map, v)
-                # mm_to_reduced_inv = lambda v: torch.mm(torch.t(m_reduction_map), torch.mm(v, m_reduction_map)) # noqa
-                # m1_to_reduced_inv = lambda v: torch.mm(torch.t(m_reduction_map), v)
 
                 nn_to_reduced = lambda v: torch.mm(n_reduction_map, torch.mm(v, torch.t(n_reduction_map))) # noqa
                 n1_to_reduced = lambda v: torch.mm(n_reduction_map, v)
-                # nn_to_reduced_inv = lambda v: torch.mm(torch.t(n_reduction_map), torch.mm(v, n_reduction_map)) # noqa
-                # n1_to_reduced_inv = lambda v: torch.mm(torch.t(n_reduction_map), v)
 
                 # Shrink
+                # TODO: Im and In can instead be constants
                 old_values = (F, Kx, Ky, Im, In, Lambda, Mu, S)
                 F = mn_to_reduced(F)
 
@@ -323,26 +335,67 @@ class ComManDo(uc.UnionCom):
                 Lambda = n1_to_reduced(Lambda)
                 S = n1_to_reduced(S)
 
-            timer.log('Shrink')
+                timer.log('Shrink')
 
-            if self.integration_type == "MultiOmics":
+            if self.integration_type == 'MultiOmics':
+                # Simplified grad with casting (atol=2e-6)
+                # 100k iterations: 5.84e-5, 5.77e-5, 5.76e-5
+                FKy = torch.mm(F, Ky)
                 grad = (
-                    # Store FKy as F2 and factor
-                    4*torch.mm(F, torch.mm(Ky, torch.mm(torch.t(F), torch.mm(F, Ky))))
-                    # In and Im sideways cast
-                    - 4*a*torch.mm(Kx, torch.mm(F, Ky)) + torch.mm(Mu, torch.t(In))
-                    # Same here
+                    4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
+                    - 4 * a * torch.mm(Kx, FKy)
+                    + torch.mm(Mu, torch.t(In))
                     + torch.mm(Im, torch.t(Lambda))
                     + self.rho * (
-                        # In * In.t is just nxn mat filled with n
+                        # Faster to multiply than to cast
                         torch.mm(F, torch.mm(In, torch.t(In)))
-                        # Factor Im
-                        - torch.mm(Im, torch.t(In))
-                        + torch.mm(Im, torch.mm(torch.t(Im), F))
-                        + torch.mm(Im, torch.t(S-In))
+                        + torch.mm(
+                            Im,
+                            torch.mm(torch.t(Im), F)
+                            + torch.t(S - 2 * In)
+                        )
                     )
                 )
+
+                # # Simplified grad (atol=1e-6)
+                # # 100k iterations: 6.16e-5, 6.08e-5, 6.08e-5
+                # FKy = torch.mm(F, Ky)
+                # grad = (
+                #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
+                #     - 4 * a * torch.mm(Kx, FKy)
+                #     + torch.mm(Mu, torch.t(In))
+                #     + torch.mm(Im, torch.t(Lambda))
+                #     + self.rho * (
+                #         # In * In.t is just nxn mat filled with 1
+                #         torch.mm(F, torch.mm(In, torch.t(In)))
+                #         # Factor Im
+                #         - torch.mm(Im, torch.t(In))
+                #         + torch.mm(Im, torch.mm(torch.t(Im), F))
+                #         + torch.mm(Im, torch.t(S-In))
+                #     )
+                # )
+
+                # # Original grad
+                # # 100k iterations: 6.59e-5, 6.54e-5, 6.57e-5
+                # original_grad = (
+                #     4*torch.mm(F, torch.mm(Ky, torch.mm(torch.t(F), torch.mm(F, Ky))))
+                #     - 4*a*torch.mm(Kx, torch.mm(F, Ky))
+                #     + torch.mm(Mu, torch.t(In))
+                #     + torch.mm(Im, torch.t(Lambda))
+                #     + self.rho * (
+                #         torch.mm(F, torch.mm(In, torch.t(In)))
+                #         - torch.mm(Im, torch.t(In))
+                #         + torch.mm(Im, torch.mm(torch.t(Im), F))
+                #         + torch.mm(Im, torch.t(S-In))
+                #     )
+                # )
+                #
+                # if not torch.allclose(grad, original_grad, atol=2e-6):
+                #     print(f'Max grad was  {torch.max(torch.abs(original_grad))}')
+                #     print(f'Mean grad was {torch.mean(torch.abs(original_grad))}')
+                #     assert False, f'Error was {torch.max(torch.abs(grad - original_grad))}'
             else:
+                # TODO: Optimization for other project methods
                 grad = (
                     dist + torch.mm(Im, torch.t(Lambda))
                     + self.rho * (
@@ -352,17 +405,13 @@ class ComManDo(uc.UnionCom):
                         + torch.mm(Im, torch.t(S-In))
                     )
                 )
-
             timer.log('Gradient Calculation')
 
-            if self.gradient_reduction > 0:
+            if self.gradient_reduction is not None:
                 # Expand values
                 F, Kx, Ky, Im, In, Lambda, Mu, S = old_values
                 grad = mn_to_reduced_inv(grad)
-            # if (i+1) % self.log_pd == 0:
-            #     print(torch.max(torch.abs(grad)))
-
-            timer.log('Expand')
+                timer.log('Expand')
 
             i += 1
             Fst_moment = pho1 * Fst_moment + (1 - pho1) * grad
@@ -372,12 +421,10 @@ class ComManDo(uc.UnionCom):
             grad = hat_Fst_moment / (torch.sqrt(hat_Snd_moment) + delta)
             F_tmp = F - grad
             F_tmp[F_tmp < 0] = 0
-
             timer.log('Moment Calculation')
 
             # update
             F = (1 - self.epsilon) * F + self.epsilon * F_tmp
-
             timer.log('Update F')
 
             # update slack variable
@@ -391,7 +438,6 @@ class ComManDo(uc.UnionCom):
             # update dual variables
             Mu = Mu + self.epsilon*(torch.mm(F, In) - Im)
             Lambda = Lambda + self.epsilon*(torch.mm(torch.t(F), Im) - In + S)
-
             timer.log('Update Dual')
 
             # if scaling factor changes too fast, we can delay the update
@@ -411,10 +457,11 @@ class ComManDo(uc.UnionCom):
                     norm2 = torch.norm(dist*F)
                     print("epoch:[{:d}/{:d}] err:{:.4f}"
                           .format(i+1, epochs, norm2.data.item()))
-
             timer.log('Delay and CLI')
 
-        # F = F.cpu().numpy()
+        if self.prime_dual_verbose:
+            timer.aggregate()
+
         return F
 
     def project_nlma(self, dataset, F_list):
@@ -423,8 +470,6 @@ class ComManDo(uc.UnionCom):
         relies on methodology and code from
         https://github.com/daifengwanglab/ManiNetCluster
         """
-        assert len(dataset) == 2, 'NLMA only supports 2 datasets'
-
         print('-' * 33)
         print('Performing NLMA')
         mu = .9
