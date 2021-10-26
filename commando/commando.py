@@ -2,6 +2,7 @@ from itertools import product
 import time
 
 import numpy as np
+from scipy import sparse
 from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
@@ -266,8 +267,8 @@ class ComManDo(uc.UnionCom):
         timer = time_logger(verbose=False)
 
         epochs = self.epoch_pd
-        if self.epoch_override is not None:
-            epochs = self.epoch_override
+        if epoch_override is not None:
+            epochs = epoch_override
         while(i < epochs):
             timer.log('Beginning')
             if self.gradient_reduction > 0:
@@ -428,6 +429,7 @@ class ComManDo(uc.UnionCom):
         print('Performing NLMA')
         mu = .9
         eps = 1e-8
+        vec_func = None
 
         # Set up manifold
         dim = len(F_list)
@@ -445,10 +447,12 @@ class ComManDo(uc.UnionCom):
         L = laplacian(W)
 
         # Perform decomposition
-        vec_func = None
+        print('Converting to sparse matrix')
+        L = sparse.csr_matrix(L)
 
         print('Calculating eigenvectors')
-        vals, vecs = np.linalg.eig(L)
+        # vals, vecs = np.linalg.eig(L)
+        vals, vecs = sparse.linalg.eigs(L)
 
         print('Filtering eigenvectors')
         idx = np.argsort(vals)
