@@ -494,7 +494,7 @@ class ComManDo(uc.UnionCom):
             else:
                 W[i][i+j] = F_list[i][j]
             if i != j:
-                W[i+j][i] = W[i][i+j]
+                W[i+j][i] = torch.t(W[i][i+j])
 
         # TODO: Verify coef structure for >2 modalities
         for i, j in product(*(2 * [range(dataset_num)])):
