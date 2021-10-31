@@ -4,14 +4,11 @@ import warnings
 
 import numpy as np
 from scipy import sparse
-from scipy.optimize import linear_sum_assignment
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.preprocessing import normalize
 import torch
 import unioncom.UnionCom as uc
-from unioncom.utils import geodesic_distances, init_random_seed, joint_probabilities
+from unioncom.utils import geodesic_distances, init_random_seed
 
 from .maninetcluster.neighborhood import laplacian
 from .utilities import time_logger
@@ -27,7 +24,6 @@ class ComManDo(uc.UnionCom):
         two_step_aggregation='random',
         two_step_log_pd=None,
         two_step_num_partitions=None,
-        two_step_omit_large=False,
         two_step_pd_large=None,
         **kwargs,
     ):
@@ -40,13 +36,12 @@ class ComManDo(uc.UnionCom):
         self.two_step_pd_large = two_step_pd_large
         self.two_step_aggregation = two_step_aggregation
         self.two_step_num_partitions = two_step_num_partitions
-        self.two_step_omit_large = two_step_omit_large
 
         self.prime_dual_verbose_timer = prime_dual_verbose_timer
 
         super().__init__(**kwargs)
 
-        if self.two_step_num_partitions is not None and not self.two_step_omit_large:
+        if self.two_step_num_partitions is not None:
             self.dist_large = []
         if two_step_log_pd is None and self.two_step_num_partitions is not None:
             self.two_step_log_pd = max(1, int(self.two_step_num_partitions / 10))
@@ -64,11 +59,12 @@ class ComManDo(uc.UnionCom):
             'haversine',
         ]
 
-        if self.integration_type not in ['BatchCorrect', 'MultiOmics']:
-            raise Exception('integration_type error! Enter MultiOmics or BatchCorrect.')
+        if self.integration_type not in ['MultiOmics']:
+            raise Exception('integration_type error! Enter MultiOmics.')
         if self.distance_mode != 'geodesic' and self.distance_mode not in distance_modes:
             raise Exception('distance_mode error! Enter a correct distance_mode.')
-        if self.project_mode not in ('tsne', 'barycentric', 'nlma'):
+        # TODO: Readd ('tsne', 'barycentric')
+        if self.project_mode not in ('nlma'):
             raise Exception("Choose correct project_mode: 'tsne, barycentric, or nlma'.")
         if self.project_mode == 'nlma' and self.integration_type == 'BatchCorrect':
             raise Exception(
@@ -93,18 +89,32 @@ class ComManDo(uc.UnionCom):
                 warnings.warn('``two_step_num_partitions`` = 1 can lead to unexpected behavior.')
 
             self.idx_all = np.arange(self.row[i])
+
             if self.two_step_aggregation == 'random':
                 # Random sampling will generally lead to similar means,
                 # leading to large F collapse
                 np.random.shuffle(self.idx_all)
                 self.idx_groups = np.array_split(self.idx_all, self.two_step_num_partitions)
+                self.idx_sorted_groups = np.array_split(
+                    np.arange(self.row[i]),
+                    self.two_step_num_partitions,
+                )
                 self.idx_all_inv = np.argsort(self.idx_all)
+            else:
+                raise Exception(
+                    '``two_step_aggregation`` type '
+                    f"'{self.two_step_aggregation}' not found"
+                )
 
-            # NOTE: Assumes square
+            # Create dataset transforms
             self.rep_transform = torch.zeros((self.row[i], self.two_step_num_partitions))
             for k, idx in enumerate(self.idx_groups):
                 self.rep_transform[idx, k] = 1
             self.sparse_transform = sparse.csr_matrix(self.rep_transform)
+
+            # Sort dataset
+            for i in range(dataset_num):
+                dataset[i] = dataset[i][self.idx_all]
 
         # Compute the distance matrix
         print('Shape of Raw data')
@@ -115,93 +125,45 @@ class ComManDo(uc.UnionCom):
                 / (np.max(dataset[i]) - np.min(dataset[i]))
             )
 
-            if (
-                self.two_step_num_partitions is not None
-                and self.project_mode == 'nlma'
-                and self.two_step_aggregation in ['random']
-            ):
-                if self.distance_mode == 'geodesic':
-                    def distance_function(df):
-                        distances = geodesic_distances(df, self.kmax)
-                        return np.array(distances)
-                else:
-                    def distance_function(df):
-                        return pairwise_distances(df, metric=self.distance_mode)
-
-                # NOTE: Matrices could be kept separate for further optimization.
-                # However, a full matrix is more compatible with existing methods
-                # Intra-group distances
-                d_diag = []
-                for idx in self.idx_groups:
-                    d_diag.append(distance_function(dataset[i][idx]))
-                d_mats = sparse.block_diag(d_diag, format='csr')
-                d_mats = d_mats[self.idx_all_inv][:, self.idx_all_inv]
-
-                if not self.two_step_omit_large:
-                    # Inter-group distances
-                    agg_intra = normalize(self.sparse_transform).transpose() * dataset[i]
-                    agg_intra = distance_function(agg_intra)
-                    agg_intra = sparse.csr_matrix(agg_intra)
-                    # agg_intra = (
-                    #     self.sparse_transform
-                    #     * agg_intra
-                    #     * self.sparse_transform.transpose()
-                    # )
-                    # d_mats += agg_intra
-                    self.dist_large.append(agg_intra)
-
-                self.dist.append(d_mats)
-                self.sparse_dist = True
+            if self.distance_mode == 'geodesic':
+                def distance_function(df):
+                    distances = geodesic_distances(df, self.kmax)
+                    return np.array(distances)
             else:
-                if self.distance_mode == 'geodesic':
-                    distances = geodesic_distances(dataset[i], self.kmax)
-                    distances = np.array(distances)
-                else:
-                    distances = pairwise_distances(dataset[i], metric=self.distance_mode)
+                def distance_function(df):
+                    return pairwise_distances(df, metric=self.distance_mode)
 
-                self.dist.append(torch.from_numpy(distances).float().to(self.device))
-                self.sparse_dist = False
-
-            if self.integration_type == 'BatchCorrect':
-                if self.distance_mode not in distance_modes:
-                    raise Exception('Note that BatchCorrect needs aligned features.')
-                else:
-                    if self.col[i] != self.col[-1]:
-                        raise Exception('BatchCorrect needs aligned features.')
-                    cor_distances = pairwise_distances(
-                        dataset[i],
-                        dataset[-1],
-                        metric=self.distance_mode,
+            if (self.two_step_num_partitions is not None):
+                # Intra-group distances
+                self.dist.append([])
+                for idx in self.idx_sorted_groups:
+                    distances = distance_function(dataset[i][idx])
+                    self.dist[-1].append(
+                        torch.from_numpy(distances).float().to(self.device)
                     )
-                    self.cor_dist.append(cor_distances)
+
+                # Inter-group distances
+                agg_intra = normalize(self.sparse_transform).transpose() * dataset[i]
+                agg_intra = distance_function(agg_intra)
+                self.dist_large.append(
+                    torch.from_numpy(agg_intra).float().to(self.device)
+                )
+            else:
+                distances = distance_function(dataset[i])
+                self.dist.append(torch.from_numpy(distances).float().to(self.device))
 
         # Find correspondence between samples
         match_result = self.match(dataset=dataset)
 
         #  Project to common embedding
-        if self.project_mode == 'tsne':
-            pairs_x = []
-            pairs_y = []
-            for i in range(dataset_num-1):
-                cost = np.max(match_result[i])-match_result[i]
-                # TODO: modification for priors
-                row_ind, col_ind = linear_sum_assignment(cost)
-                pairs_x.append(row_ind)
-                pairs_y.append(col_ind)
+        integrated_data = self.project_nlma(dataset, match_result)
 
-            P_joint = []
-            time1 = time.time()
-            for i in range(dataset_num):
-                P_joint.append(joint_probabilities(self.dist[i], self.perplexity))
-            for i in range(dataset_num):
-                if self.col[i] > 50:
-                    dataset[i] = PCA(n_components=50).fit_transform(dataset[i])
-                    self.col[i] = 50
-            integrated_data = self.project_tsne(dataset, pairs_x, pairs_y, P_joint)
-        elif self.project_mode == 'barycentric':
-            integrated_data = self.project_barycentric(dataset, match_result)
-        elif self.project_mode == 'nlma':
-            integrated_data = self.project_nlma(dataset, match_result)
+        # Unsort data
+        if self.two_step_num_partitions is not None:
+            integrated_data = tuple(
+                integrated_data[i][self.idx_all_inv]
+                for i in range(dataset_num)
+            )
 
         print('-' * 33)
         print('ComManDo Done!')
@@ -215,131 +177,55 @@ class ComManDo(uc.UnionCom):
         print('Device:', self.device)
         dataset_num = len(dataset)
 
-        if self.project_mode == 'nlma':
-            cor_pairs = dataset_num * [dataset_num * [None]]
-            for i in range(dataset_num):
-                for j in range(i, dataset_num):
-                    print('-' * 33)
-                    print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
-                    if self.two_step_num_partitions is not None:
-                        # idx partitioning (if applicable)
-                        # TODO: Work on all datasets
-                        # TODO: OrthoClust
-                        if self.two_step_aggregation == 'agglomerative':
-                            # TODO: Implement ``self.idx_all`` sorting change
-                            # with ``self.idx_all_inv``
-                            # Agglomerative clustering is very sensitive to
-                            # outliers, and can lead to small F collapse
-                            agg_groups = (
-                                AgglomerativeClustering(
-                                    n_clusters=self.two_step_num_partitions,
-                                    affinity='precomputed',
-                                    linkage='average',
-                                )
-                                .fit(self.dist[i])
-                                .labels_
-                            )
-                            self.idx_groups = [
-                                self.idx_all[agg_groups == i]
-                                for i in range(self.two_step_num_partitions)
-                            ]
-                        elif self.two_step_aggregation == 'graph_partitioning':
-                            # TODO: Implement weighted graph partitioning to avoid
-                            # collapse
-                            pass
-                        elif self.two_step_aggregation in ['random']:
-                            pass
-                        else:
-                            raise Exception(
-                                '``two_step_aggregation`` type '
-                                f"'{self.two_step_aggregation}' not found"
-                            )
-                        # First step (small F)
-                        F_diag = []
-                        for k, idx in enumerate(self.idx_groups):
-                            small_f_verbose = (k+1) % self.two_step_log_pd == 0
-                            if small_f_verbose:
-                                print(f'Calculating intra-group F #{k + 1}')
-                            dist = [self.dist[i][idx][:, idx], self.dist[j][idx][:, idx]]
-                            if self.sparse_dist:
-                                dist = [torch.tensor(e.toarray()) for e in dist]
-                            F_diag.append(self.Prime_Dual(
-                                dist,
-                                dx=len(idx),
-                                dy=len(idx),
-                                verbose=small_f_verbose,
-                            ))
-
-                        # Reconstruct and unsort large F
-                        print('Constructing large F')
-                        F = sparse.block_diag(F_diag, format='csr')
-                        F = F[self.idx_all_inv][:, self.idx_all_inv]
-
-                        # # TODO: Size evaluation
-                        # # TODO: Clean up memory usage
-                        # import sys
-                        # print(sys.getsizeof(F_diag))
-
-                        # Second step (Large F)
-                        if not self.two_step_omit_large:
-                            print('Calculating inter-group F')
-                            # Compute representative points (distance)
-                            # def shrink_matrix(m):
-                            #     norm_sparse_transform = normalize(self.sparse_transform)
-                            #     return (
-                            #         norm_sparse_transform.transpose()
-                            #         * m
-                            #         * norm_sparse_transform
-                            #     )
-
-                            def expand_matrix(m):
-                                sparse_m = sparse.csr_matrix(m)
-                                return (
-                                    self.sparse_transform
-                                    * sparse_m
-                                    * self.sparse_transform.transpose()
-                                )
-
-                            # i_dist = shrink_matrix(self.dist[i])
-                            # j_dist = shrink_matrix(self.dist[j])
-                            i_dist = self.dist_large[i]
-                            j_dist = self.dist_large[j]
-
-                            # Calculate inter-pseudo F
-                            dist = [i_dist, j_dist]
-                            if self.sparse_dist:
-                                dist = [torch.tensor(e.toarray()) for e in dist]
-                            rep_F = self.Prime_Dual(
-                                dist,
-                                dx=self.two_step_num_partitions,
-                                dy=self.two_step_num_partitions,
-                                epoch_override=self.two_step_pd_large,
-                            )
-                            rep_F = expand_matrix(rep_F.fill_diagonal_(0))
-
-                            # Add inter-pseudocell data
-                            F += rep_F
-                    else:
-                        F = self.Prime_Dual(
-                            [self.dist[i], self.dist[j]],
+        cor_pairs = [[] for i in range(dataset_num)]
+        for i in range(dataset_num):
+            for j in range(i, dataset_num):
+                print('-' * 33)
+                print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
+                if self.two_step_num_partitions is not None:
+                    # idx partitioning (if applicable)
+                    # TODO: OrthoClust on all datasets
+                    # First step (small F)
+                    F_diag = []
+                    for k, (i_dist, j_dist) in enumerate(zip(self.dist[i], self.dist[j])):
+                        small_f_verbose = (k+1) % self.two_step_log_pd == 0
+                        if small_f_verbose:
+                            print(f'Calculating intra-group F #{k + 1}')
+                        F_diag.append(self.Prime_Dual(
+                            [i_dist, j_dist],
                             dx=self.col[i],
                             dy=self.col[j],
-                        )
-                    cor_pairs[i][j] = F
-                    if i != j:
-                        cor_pairs[j][i] = F.T
+                            verbose=small_f_verbose,
+                        ))
 
-        else:
-            cor_pairs = []
-            for i in range(dataset_num-1):
-                print('-' * 33)
-                print(f'Find correspondence between Dataset {i + 1} and Dataset {len(dataset)}')
-                if self.integration_type == "MultiOmics":
-                    cor_pairs.append(self.Prime_Dual([self.dist[i], self.dist[-1]],
-                                                     dx=self.col[i],
-                                                     dy=self.col[-1]))
+                    # # Reconstruct and unsort large F
+                    # print('Constructing large F')
+                    # F = torch.block_diag(*F_diag)
+
+                    # Second step (Large F)
+                    print('Calculating inter-group F')
+                    i_dist = self.dist_large[i]
+                    j_dist = self.dist_large[j]
+
+                    # Calculate inter-pseudo F
+                    dist = [i_dist, j_dist]
+                    F_rep = self.Prime_Dual(
+                        dist,
+                        dx=self.col[i],
+                        dy=self.col[j],
+                        epoch_override=self.two_step_pd_large,
+                    )
+
+                    # # TODO: Is this line justified?
+                    # F_rep = F_rep.fill_diagonal_(0)
+                    F = (F_diag, F_rep)
                 else:
-                    cor_pairs.append(self.Prime_Dual(self.cor_dist[i]))
+                    F = self.Prime_Dual(
+                        [self.dist[i], self.dist[j]],
+                        dx=self.col[i],
+                        dy=self.col[j],
+                    )
+                cor_pairs[i].append(F)
 
         print("Finished Matching!")
         return cor_pairs
@@ -353,24 +239,16 @@ class ComManDo(uc.UnionCom):
         verbose=True,
     ):
         """Prime dual combined with Adam algorithm to find the local optimal soluation"""
-        if self.integration_type == "MultiOmics":
-            Kx = dist[0]
-            Ky = dist[1]
-            N = np.int(np.maximum(Kx.shape[0], Ky.shape[0]))
-            Kx = Kx / N
-            Ky = Ky / N
-            # TODO: Sparse matrix compatibility
-            Kx = Kx.float().to(self.device)
-            Ky = Ky.float().to(self.device)
-            a = np.sqrt(dy/dx)
-            m = np.shape(Kx)[0]
-            n = np.shape(Ky)[0]
-
-        else:
-            m = np.shape(dist)[0]
-            n = np.shape(dist)[1]
-            a = 1
-            dist = dist.float().to(self.device)
+        Kx = dist[0]
+        Ky = dist[1]
+        N = np.int(np.maximum(Kx.shape[0], Ky.shape[0]))
+        Kx = Kx / N
+        Ky = Ky / N
+        Kx = Kx.float().to(self.device)
+        Ky = Ky.float().to(self.device)
+        a = np.sqrt(dy/dx)
+        m = np.shape(Kx)[0]
+        n = np.shape(Ky)[0]
 
         # F = np.zeros((m, n))
         F = torch.zeros((m, n)).float().to(self.device)
@@ -445,93 +323,81 @@ class ComManDo(uc.UnionCom):
 
                 timer.log('Shrink')
 
-            if self.integration_type == 'MultiOmics':
-                # Simplified grad with casting (atol=2e-6)
-                # 100k iterations: 5.52e-5, 5.48e-5, 5.50e-5
-                FKy = torch.mm(F, Ky)
-                grad = (
-                    4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
-                    - 4 * a * torch.mm(Kx, FKy)
-                    + torch.mm(Mu, torch.t(In))
-                    + torch.mm(Im, torch.t(Lambda))
-                    + self.rho * (
-                        torch.mm(F, Inn)
-                        + torch.mm(
-                            Im,
-                            # Using premade Imm slows computation
-                            torch.mm(torch.t(Im), F)
-                            + torch.t(S - 2 * In)
-                        )
+            # Simplified grad with casting (atol=2e-6)
+            # 100k iterations: 5.52e-5, 5.48e-5, 5.50e-5
+            FKy = torch.mm(F, Ky)
+            grad = (
+                4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
+                - 4 * a * torch.mm(Kx, FKy)
+                + torch.mm(Mu, torch.t(In))
+                + torch.mm(Im, torch.t(Lambda))
+                + self.rho * (
+                    torch.mm(F, Inn)
+                    + torch.mm(
+                        Im,
+                        # Using premade Imm slows computation
+                        torch.mm(torch.t(Im), F)
+                        + torch.t(S - 2 * In)
                     )
                 )
+            )
 
-                # # Simplified grad with casting (atol=2e-6)
-                # # 100k iterations: 5.84e-5, 5.77e-5, 5.76e-5
-                # FKy = torch.mm(F, Ky)
-                # grad = (
-                #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
-                #     - 4 * a * torch.mm(Kx, FKy)
-                #     + torch.mm(Mu, torch.t(In))
-                #     + torch.mm(Im, torch.t(Lambda))
-                #     + self.rho * (
-                #         # Faster to multiply than to cast/repeat
-                #         torch.mm(F, torch.mm(In, torch.t(In)))
-                #         + torch.mm(
-                #             Im,
-                #             torch.t(S - 2 * In)
-                #         )
-                #         + torch.mm(Imm, F)
-                #     )
-                # )
+            # # Simplified grad with casting (atol=2e-6)
+            # # 100k iterations: 5.84e-5, 5.77e-5, 5.76e-5
+            # FKy = torch.mm(F, Ky)
+            # grad = (
+            #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
+            #     - 4 * a * torch.mm(Kx, FKy)
+            #     + torch.mm(Mu, torch.t(In))
+            #     + torch.mm(Im, torch.t(Lambda))
+            #     + self.rho * (
+            #         # Faster to multiply than to cast/repeat
+            #         torch.mm(F, torch.mm(In, torch.t(In)))
+            #         + torch.mm(
+            #             Im,
+            #             torch.t(S - 2 * In)
+            #         )
+            #         + torch.mm(Imm, F)
+            #     )
+            # )
 
-                # # Simplified grad (atol=1e-6)
-                # # 100k iterations: 6.16e-5, 6.08e-5, 6.08e-5
-                # FKy = torch.mm(F, Ky)
-                # grad = (
-                #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
-                #     - 4 * a * torch.mm(Kx, FKy)
-                #     + torch.mm(Mu, torch.t(In))
-                #     + torch.mm(Im, torch.t(Lambda))
-                #     + self.rho * (
-                #         # In * In.t is just nxn mat filled with 1
-                #         torch.mm(F, torch.mm(In, torch.t(In)))
-                #         # Factor Im
-                #         - torch.mm(Im, torch.t(In))
-                #         + torch.mm(Im, torch.mm(torch.t(Im), F))
-                #         + torch.mm(Im, torch.t(S-In))
-                #     )
-                # )
+            # # Simplified grad (atol=1e-6)
+            # # 100k iterations: 6.16e-5, 6.08e-5, 6.08e-5
+            # FKy = torch.mm(F, Ky)
+            # grad = (
+            #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
+            #     - 4 * a * torch.mm(Kx, FKy)
+            #     + torch.mm(Mu, torch.t(In))
+            #     + torch.mm(Im, torch.t(Lambda))
+            #     + self.rho * (
+            #         # In * In.t is just nxn mat filled with 1
+            #         torch.mm(F, torch.mm(In, torch.t(In)))
+            #         # Factor Im
+            #         - torch.mm(Im, torch.t(In))
+            #         + torch.mm(Im, torch.mm(torch.t(Im), F))
+            #         + torch.mm(Im, torch.t(S-In))
+            #     )
+            # )
 
-                # # Original grad
-                # # 100k iterations: 6.59e-5, 6.54e-5, 6.57e-5
-                # original_grad = (
-                #     4*torch.mm(F, torch.mm(Ky, torch.mm(torch.t(F), torch.mm(F, Ky))))
-                #     - 4*a*torch.mm(Kx, torch.mm(F, Ky))
-                #     + torch.mm(Mu, torch.t(In))
-                #     + torch.mm(Im, torch.t(Lambda))
-                #     + self.rho * (
-                #         torch.mm(F, torch.mm(In, torch.t(In)))
-                #         - torch.mm(Im, torch.t(In))
-                #         + torch.mm(Im, torch.mm(torch.t(Im), F))
-                #         + torch.mm(Im, torch.t(S-In))
-                #     )
-                # )
-                #
-                # if not torch.allclose(grad, original_grad, atol=1e-5):
-                #     print(f'Max grad was  {torch.max(torch.abs(original_grad))}')
-                #     print(f'Mean grad was {torch.mean(torch.abs(original_grad))}')
-                #     assert False, f'Error was {torch.max(torch.abs(grad - original_grad))}'
-            else:
-                # TODO: Optimization for other project methods
-                grad = (
-                    dist + torch.mm(Im, torch.t(Lambda))
-                    + self.rho * (
-                        torch.mm(F, torch.mm(In, torch.t(In)))
-                        - torch.mm(Im, torch.t(In))
-                        + torch.mm(Im, torch.mm(torch.t(Im), F))
-                        + torch.mm(Im, torch.t(S-In))
-                    )
-                )
+            # # Original grad
+            # # 100k iterations: 6.59e-5, 6.54e-5, 6.57e-5
+            # original_grad = (
+            #     4*torch.mm(F, torch.mm(Ky, torch.mm(torch.t(F), torch.mm(F, Ky))))
+            #     - 4*a*torch.mm(Kx, torch.mm(F, Ky))
+            #     + torch.mm(Mu, torch.t(In))
+            #     + torch.mm(Im, torch.t(Lambda))
+            #     + self.rho * (
+            #         torch.mm(F, torch.mm(In, torch.t(In)))
+            #         - torch.mm(Im, torch.t(In))
+            #         + torch.mm(Im, torch.mm(torch.t(Im), F))
+            #         + torch.mm(Im, torch.t(S-In))
+            #     )
+            # )
+            #
+            # if not torch.allclose(grad, original_grad, atol=1e-5):
+            #     print(f'Max grad was  {torch.max(torch.abs(original_grad))}')
+            #     print(f'Mean grad was {torch.mean(torch.abs(original_grad))}')
+            #     assert False, f'Error was {torch.max(torch.abs(grad - original_grad))}'
             timer.log('Gradient Calculation')
 
             if self.gradient_reduction is not None:
@@ -599,29 +465,52 @@ class ComManDo(uc.UnionCom):
         """
         print('-' * 33)
         print('Performing NLMA')
+        dataset_num = len(dataset)
         mu = .9
         eps = 1e-8
         vec_func = None
 
         # Set up manifold
         dim = len(F_list)
-        W = F_list
+        W = [[None for j in range(dataset_num)] for i in range(dataset_num)]
+
+        # Dense F
+        def expand_matrix(m):
+            return torch.mm(
+                self.rep_transform,
+                torch.mm(
+                    m,
+                    torch.t(self.rep_transform),
+                ),
+            )
+
+        print('Constructing W')
+        for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+            if self.two_step_num_partitions is not None:
+                # TODO: Avoid needing to do this
+                F_diag = F_list[i][j][0]
+                F_rep = F_list[i][j][1]
+                W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
+            else:
+                W[i][i+j] = F_list[i][j]
+            if i != j:
+                W[i+j][i] = W[i][i+j]
 
         # TODO: Verify coef structure for >2 modalities
-        print('Constructing W')
-        coef = (1-mu) * torch.ones((dim, dim))
-        coef = coef.fill_diagonal_(mu)
-        for i, j in product(*(2 * [range(dim)])):
-            W[i][j] = W[i][j].multiply(coef[i, j])
-        W = sparse.bmat(W, format='csr')
+        for i, j in product(*(2 * [range(dataset_num)])):
+            if i == j:
+                coef = mu
+            else:
+                coef = 1 - mu
+            W[i][j] *= coef
+        W = torch.from_numpy(np.bmat(W)).float().to(self.device)
 
         print('Computing Laplacian')
-        L = sparse.csgraph.laplacian(W)
+        # TODO: Use ideal F symmetry in computation
+        L = laplacian(W)
 
         print('Calculating eigenvectors')
-        # vals, vecs = np.linalg.eig(L)
-        # TODO: Use ideal F symmetry in eig computation
-        vals, vecs = sparse.linalg.eigs(L)
+        vals, vecs = np.linalg.eig(L)
 
         print('Filtering eigenvectors')
         idx = np.argsort(vals)
