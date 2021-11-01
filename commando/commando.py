@@ -63,7 +63,7 @@ class ComManDo(uc.UnionCom):
             raise Exception('integration_type error! Enter MultiOmics.')
         if self.distance_mode != 'geodesic' and self.distance_mode not in distance_modes:
             raise Exception('distance_mode error! Enter a correct distance_mode.')
-        # TODO: Readd ('tsne', 'barycentric')
+        # ASDDDF: Readd ('tsne', 'barycentric')
         if self.project_mode not in ('nlma'):
             raise Exception("Choose correct project_mode: 'tsne, barycentric, or nlma'.")
         if self.project_mode == 'nlma' and self.integration_type == 'BatchCorrect':
@@ -83,7 +83,8 @@ class ComManDo(uc.UnionCom):
         if self.project_mode == 'nlma' and not (np.array(self.row) == self.row[0]).all():
             raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
-        # Create groupings (NLMA)
+        # Create groupings (two-step)
+        # ASDF: Non-random, potentially OrthoClust
         if self.two_step_num_partitions is not None:
             if self.two_step_num_partitions == 1:
                 warnings.warn('``two_step_num_partitions`` = 1 can lead to unexpected behavior.')
@@ -183,8 +184,6 @@ class ComManDo(uc.UnionCom):
                 print('-' * 33)
                 print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
                 if self.two_step_num_partitions is not None:
-                    # idx partitioning (if applicable)
-                    # TODO: OrthoClust on all datasets
                     # First step (small F)
                     F_diag = []
                     for k, (i_dist, j_dist) in enumerate(zip(self.dist[i], self.dist[j])):
@@ -216,8 +215,11 @@ class ComManDo(uc.UnionCom):
                         epoch_override=self.two_step_pd_large,
                     )
 
-                    # # TODO: Is this line justified?
+                    # # ASDDF: Is this line justified?
                     # F_rep = F_rep.fill_diagonal_(0)
+
+                    # ASDDF: Store only upper triangular (?)
+                    # ASDF: Apply scaling factors for K_x ~= FK_yF^t compatibility
                     F = (F_diag, F_rep)
                 else:
                     F = self.Prime_Dual(
@@ -308,7 +310,7 @@ class ComManDo(uc.UnionCom):
                 n1_to_reduced = lambda v: torch.mm(n_reduction_map, v)
 
                 # Shrink
-                # TODO: Im and In can instead be constants
+                # ASDDDF: Im and In can instead be constants
                 old_values = (F, Kx, Ky, Im, In, Lambda, Mu, S)
                 F = mn_to_reduced(F)
 
@@ -466,12 +468,11 @@ class ComManDo(uc.UnionCom):
         print('-' * 33)
         print('Performing NLMA')
         dataset_num = len(dataset)
-        mu = .9
+        mu = .9  # ASDF: Make this lower
         eps = 1e-8
         vec_func = None
 
         # Set up manifold
-        dim = len(F_list)
         W = [[None for j in range(dataset_num)] for i in range(dataset_num)]
 
         # Dense F
@@ -487,7 +488,7 @@ class ComManDo(uc.UnionCom):
         print('Constructing W')
         for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
             if self.two_step_num_partitions is not None:
-                # TODO: Avoid needing to do this
+                # ASDF: Avoid needing to do this
                 F_diag = F_list[i][j][0]
                 F_rep = F_list[i][j][1]
                 W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
@@ -496,7 +497,6 @@ class ComManDo(uc.UnionCom):
             if i != j:
                 W[i+j][i] = torch.t(W[i][i+j])
 
-        # TODO: Verify coef structure for >2 modalities
         for i, j in product(*(2 * [range(dataset_num)])):
             if i == j:
                 coef = mu
@@ -506,10 +506,13 @@ class ComManDo(uc.UnionCom):
         W = torch.from_numpy(np.bmat(W)).float().to(self.device)
 
         print('Computing Laplacian')
-        # TODO: Use ideal F symmetry in computation
-        L = laplacian(W)
+        # ASDF: Calculate in compressed representation
+        # L = sparse.csgraph.laplacian(W)
+        L = sparse.csr_matrix(laplacian(W))
 
         print('Calculating eigenvectors')
+        # ASDDF: Find way to calculate in compressed representation
+        # vals, vecs = sp_linalg.eigsh(L, )
         vals, vecs = np.linalg.eig(L)
 
         print('Filtering eigenvectors')
