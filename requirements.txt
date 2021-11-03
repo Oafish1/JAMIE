@@ -17,6 +17,7 @@ numpy==1.21.2
     #   ComManDo (setup.py)
     #   matplotlib
     #   scikit-learn
+    #   scikit-learn-extra
     #   scipy
     #   torchvision
 pillow==8.3.2
@@ -28,11 +29,16 @@ pyparsing==2.4.7
 python-dateutil==2.8.2
     # via matplotlib
 scikit-learn==1.0
-    # via sklearn
+    # via
+    #   scikit-learn-extra
+    #   sklearn
+scikit-learn-extra==0.2.0
+    # via ComManDo (setup.py)
 scipy==1.7.1
     # via
     #   ComManDo (setup.py)
     #   scikit-learn
+    #   scikit-learn-extra
 six==1.16.0
     # via
     #   cycler

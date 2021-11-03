@@ -15,6 +15,7 @@ setup(
         # Unioncom
         'matplotlib',
         'numpy',
+        'scikit-learn-extra',
         'scipy',
         'sklearn',
         'torch',

@@ -3,14 +3,13 @@ import time
 import warnings
 
 import numpy as np
-from scipy import sparse
+from scipy import linalg, sparse
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.preprocessing import normalize
 import torch
 import unioncom.UnionCom as uc
 from unioncom.utils import geodesic_distances, init_random_seed
 
-from .maninetcluster.neighborhood import laplacian
 from .utilities import time_logger
 
 
@@ -91,21 +90,72 @@ class ComManDo(uc.UnionCom):
 
             self.idx_all = np.arange(self.row[i])
 
+            """
+            Each method modifies a few vars
+
+            ``idx_all`` is the idx to sort the data (into group order)
+            ``idx_all_inv`` is the idx to unsort the data
+            ``idx_groups`` is the idx to access each group in the unsorted array
+            ``idx_sorted_groups`` is the idx to access each group in the sorted array
+
+            Ex.
+            We have group indexes [[3,2],[0,1]]
+            ``idx_all``
+            [3,2,0,1]
+            ``idx_all_inv``
+            [2,3,1,0]
+            ``idx_groups``
+            [[3,2],[0,1]]
+            ``idx_sorted_groups``
+            [[0,1],[2,3]]
+            """
             if self.two_step_aggregation == 'random':
                 # Random sampling will generally lead to similar means,
                 # leading to large F collapse
                 np.random.shuffle(self.idx_all)
                 self.idx_groups = np.array_split(self.idx_all, self.two_step_num_partitions)
                 self.idx_sorted_groups = np.array_split(
-                    np.arange(self.row[i]),
+                    np.arange(self.row[0]),
                     self.two_step_num_partitions,
                 )
                 self.idx_all_inv = np.argsort(self.idx_all)
+
+            elif self.two_step_aggregation == 'kmed':
+                from sklearn_extra.cluster import KMedoids
+
+                # ASDDF: Take both datasets into account
+                # ASDDDF: Add distance metric changeability
+                cluster = KMedoids(
+                    n_clusters=self.two_step_num_partitions,
+                    random_state=self.manual_seed,
+                    method='alternate',
+                    init='k-medoids++',
+                ).fit(dataset[0])
+                labels = cluster.labels_
+                self.idx_all = np.argsort(labels)
+                self.idx_all_inv = np.argsort(self.idx_all)
+                self.idx_groups = [
+                    np.arange(self.row[1])[labels == i]
+                    for i in range(self.two_step_num_partitions)
+                ]
+                running_idx = []
+                for group in self.idx_groups[:-1]:
+                    if len(running_idx) == 0:
+                        running_idx.append(len(group))
+                    else:
+                        running_idx.append(len(group) + running_idx[-1])
+                self.idx_sorted_groups = np.split(np.arange(self.row[0]), running_idx)
             else:
                 raise Exception(
                     '``two_step_aggregation`` type '
                     f"'{self.two_step_aggregation}' not found"
                 )
+
+            # Print group sizes (for skew debugging)
+            print('Two-Step group sizes:')
+            for group in self.idx_sorted_groups[:-1]:
+                print(len(group), end=', ')
+            print(len(self.idx_sorted_groups[-1]))
 
             # Create dataset transforms
             self.rep_transform = torch.zeros((self.row[i], self.two_step_num_partitions))
@@ -216,7 +266,7 @@ class ComManDo(uc.UnionCom):
                     )
 
                     # # ASDDF: Is this line justified?
-                    # F_rep = F_rep.fill_diagonal_(0)
+                    F_rep = F_rep.fill_diagonal_(0)
 
                     # ASDDF: Store only upper triangular (?)
                     # ASDF: Apply scaling factors for K_x ~= FK_yF^t compatibility
@@ -243,6 +293,13 @@ class ComManDo(uc.UnionCom):
         """Prime dual combined with Adam algorithm to find the local optimal soluation"""
         Kx = dist[0]
         Ky = dist[1]
+
+        # Escape for 1x1 data
+        if Kx.shape == (1, 1) and Ky.shape == (1, 1):
+            if verbose:
+                print('1x1 distance matrix, escaping...')
+            return torch.ones((1, 1)).float().to(self.device)
+
         N = np.int(np.maximum(Kx.shape[0], Ky.shape[0]))
         Kx = Kx / N
         Ky = Ky / N
@@ -485,36 +542,110 @@ class ComManDo(uc.UnionCom):
                 ),
             )
 
-        print('Constructing W')
-        for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-            if self.two_step_num_partitions is not None:
-                # ASDF: Avoid needing to do this
-                F_diag = F_list[i][j][0]
-                F_rep = F_list[i][j][1]
-                W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
-            else:
+        if self.two_step_num_partitions is None:
+            print('Constructing W')
+            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
                 W[i][i+j] = F_list[i][j]
-            if i != j:
-                W[i+j][i] = torch.t(W[i][i+j])
+                if i != j:
+                    W[i+j][i] = torch.t(W[i][i+j])
 
-        for i, j in product(*(2 * [range(dataset_num)])):
-            if i == j:
-                coef = mu
-            else:
-                coef = 1 - mu
-            W[i][j] *= coef
-        W = torch.from_numpy(np.bmat(W)).float().to(self.device)
+        print('Applying Coefficients')
+        coef_func = lambda a, b: mu if a == b else 1 - mu
+        if self.two_step_num_partitions is not None:
+            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+                coef = coef_func(i, i+j)
+                # Apply in compressed representation
+                F_list[i][j] = (
+                    [
+                        coef * F_diag_component
+                        for F_diag_component in F_list[i][j][0]
+                    ],
+                    coef * F_list[i][j][1]
+                )
+        else:
+            for i, j in product(*(2 * [range(dataset_num)])):
+                coef = coef_func(i, j)
+                W[i][j] *= coef
+            W = torch.from_numpy(np.bmat(W)).float().to(self.device)
 
         print('Computing Laplacian')
-        # ASDF: Calculate in compressed representation
-        # L = sparse.csgraph.laplacian(W)
-        L = sparse.csr_matrix(laplacian(W))
+        if self.two_step_num_partitions is not None:
+            # Calculate in compressed representation
+            # Zero diagonal
+            for i in range(dataset_num):
+                for F_diag in F_list[i][0][0]:
+                    dim = F_diag.shape[0]
+                    F_diag.view(-1)[::dim + 1] = 0
+
+            # Invert values
+            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+                F_diag, F_rep = F_list[i][j]
+                for mat in (*F_diag, F_rep):
+                    mat *= -1
+
+            # Get degrees
+            def get(upper_triangle_block, i, j):
+                if j >= i:
+                    return(upper_triangle_block[i][j-i])
+                output = upper_triangle_block[j][i-j]
+                return (
+                    [torch.t(mat) for mat in output[0]],
+                    torch.t(output[1])
+                )
+
+            new_diag = []
+            for col in range(dataset_num):
+                running_col_sum = torch.zeros(self.row[0])
+                for row in range(dataset_num):
+                    F_diag, F_rep = get(F_list, row, col)
+                    rep_col_sum = torch.sum(F_rep, 0)
+                    total_col_sum = [
+                        rep + torch.sum(mat, 0)
+                        for mat, rep in zip(F_diag, rep_col_sum)
+                    ]
+                    running_col_sum += torch.cat(total_col_sum)
+                running_col_sum *= -1
+                new_diag.append(running_col_sum)
+            new_diag = torch.cat(new_diag)
+
+            # Reassign to diagonal
+            start_idx = 0
+            for i in range(dataset_num):
+                for F_diag in F_list[i][0][0]:
+                    dim = F_diag.shape[0]
+                    F_diag.view(-1)[::dim + 1] = new_diag[start_idx:start_idx+dim]
+                    start_idx += dim
+        else:
+            # Dense calculation of scipy.sparse.csgraph from
+            # ManiNetCluster
+            n_nodes = self.row[0]
+            L = -np.asarray(W)
+            L.flat[::n_nodes + 1] = 0
+            d = -L.sum(axis=0)
+            L.flat[::n_nodes + 1] = d
+
+        if self.two_step_num_partitions is not None:
+            print('Constructing L')
+            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+                # ASDF: Avoid needing to do this
+                F_diag, F_rep = F_list[i][j]
+                W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
+                if i != j:
+                    W[i+j][i] = torch.t(W[i][i+j])
+            L = torch.from_numpy(np.bmat(W)).float().to(self.device)
 
         print('Calculating eigenvectors')
         # ASDDF: Find way to calculate in compressed representation
         # vals, vecs = sp_linalg.eigsh(L, )
-        vals, vecs = np.linalg.eig(L)
+        vals, vecs = linalg.eigh(
+            L,
+            overwrite_a=True,
+            # ASDDF: Find better way to subset by index
+            subset_by_index=(0, self.output_dim + 10),
+            # subset_by_value=(eps, np.inf),
+        )
 
+        # ASDDF: Shorten if eig solution supports filtering
         print('Filtering eigenvectors')
         idx = np.argsort(vals)
         for i in range(len(idx)):

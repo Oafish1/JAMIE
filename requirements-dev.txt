@@ -46,6 +46,7 @@ numpy==1.21.2
     #   commando
     #   matplotlib
     #   scikit-learn
+    #   scikit-learn-extra
     #   scipy
     #   torchvision
 packaging==21.0
@@ -89,12 +90,18 @@ python-dateutil==2.8.2
 scikit-learn==1.0
     # via
     #   -c requirements.txt
+    #   scikit-learn-extra
     #   sklearn
+scikit-learn-extra==0.2.0
+    # via
+    #   -c requirements.txt
+    #   commando
 scipy==1.7.1
     # via
     #   -c requirements.txt
     #   commando
     #   scikit-learn
+    #   scikit-learn-extra
 six==1.16.0
     # via
     #   -c requirements.txt
