@@ -158,10 +158,13 @@ class ComManDo(uc.UnionCom):
             print(len(self.idx_sorted_groups[-1]))
 
             # Create dataset transforms
-            self.rep_transform = torch.zeros((self.row[i], self.two_step_num_partitions))
+            self.rep_transform = (
+                torch.zeros((self.row[i], self.two_step_num_partitions))
+                .float().to(self.device)
+            )
             for k, idx in enumerate(self.idx_groups):
                 self.rep_transform[idx, k] = 1
-            self.sparse_transform = sparse.csr_matrix(self.rep_transform)
+            self.sparse_transform = sparse.csr_matrix(self.rep_transform.cpu())
 
             # Sort dataset
             for i in range(dataset_num):
@@ -543,9 +546,9 @@ class ComManDo(uc.UnionCom):
             )
 
         if self.two_step_num_partitions is None:
-            print('Constructing W')
+            print('Constructing Dense W')
             for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                W[i][i+j] = F_list[i][j]
+                W[i][i+j] = F_list[i][j].cpu()
                 if i != j:
                     W[i+j][i] = torch.t(W[i][i+j])
 
@@ -566,7 +569,7 @@ class ComManDo(uc.UnionCom):
             for i, j in product(*(2 * [range(dataset_num)])):
                 coef = coef_func(i, j)
                 W[i][j] *= coef
-            W = torch.from_numpy(np.bmat(W)).float().to(self.device)
+            W = torch.from_numpy(np.bmat(W)).float().cpu()
 
         print('Computing Laplacian')
         if self.two_step_num_partitions is not None:
@@ -595,7 +598,7 @@ class ComManDo(uc.UnionCom):
 
             new_diag = []
             for col in range(dataset_num):
-                running_col_sum = torch.zeros(self.row[0])
+                running_col_sum = torch.zeros(self.row[0]).float().to(self.device)
                 for row in range(dataset_num):
                     F_diag, F_rep = get(F_list, row, col)
                     rep_col_sum = torch.sum(F_rep, 0)
@@ -630,9 +633,10 @@ class ComManDo(uc.UnionCom):
                 # ASDF: Avoid needing to do this
                 F_diag, F_rep = F_list[i][j]
                 W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
+                W[i][i+j] = W[i][i+j].cpu()
                 if i != j:
                     W[i+j][i] = torch.t(W[i][i+j])
-            L = torch.from_numpy(np.bmat(W)).float().to(self.device)
+            L = torch.from_numpy(np.bmat(W)).float().cpu()
 
         print('Calculating eigenvectors')
         # ASDDF: Find way to calculate in compressed representation
@@ -641,8 +645,8 @@ class ComManDo(uc.UnionCom):
             L,
             overwrite_a=True,
             # ASDDF: Find better way to subset by index
-            subset_by_index=(0, self.output_dim + 10),
-            # subset_by_value=(eps, np.inf),
+            # subset_by_index=(0, self.output_dim + 10),
+            subset_by_value=(eps, np.inf),
         )
 
         # ASDDF: Shorten if eig solution supports filtering
