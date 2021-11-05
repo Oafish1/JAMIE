@@ -629,8 +629,8 @@ class ComManDo(uc.UnionCom):
                 for mat in [*F_diag, F_rep]:
                     mat[mat < culling_threshold] = 0
 
-                F_diag = [sparse.csr_matrix(diag) for diag in F_diag]
-                F_rep = sparse.csr_matrix(F_rep)
+                F_diag = [sparse.csr_matrix(diag.cpu()) for diag in F_diag]
+                F_rep = sparse.csr_matrix(F_rep.cpu())
                 W[i][i+j] = sparse.block_diag(F_diag) + expand_matrix_sparse(F_rep)
                 if i != j:
                     W[i+j][i] = W[i][i+j].transpose()
