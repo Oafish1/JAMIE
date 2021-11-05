@@ -3,7 +3,8 @@ import time
 import warnings
 
 import numpy as np
-from scipy import linalg, sparse
+from scipy import linalg, sparse, stats
+from scipy.sparse import linalg as sp_linalg
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.preprocessing import normalize
 import torch
@@ -48,7 +49,7 @@ class ComManDo(uc.UnionCom):
             self.two_step_log_pd = two_step_log_pd
 
     def fit_transform(self, dataset=None):
-        """The only addition here is the `'nlma'` option for `project_mode`"""
+        """Fit function with ``nlma`` added"""
         distance_modes = [
             'euclidean', 'l2', 'l1', 'manhattan', 'cityblock', 'braycurtis',
             'canberra', 'chebyshev', 'correlation', 'cosine', 'dice', 'hamming',
@@ -57,10 +58,13 @@ class ComManDo(uc.UnionCom):
             'sokalsneath', 'sqeuclidean', 'yule', 'wminkowski', 'nan_euclidean',
             'haversine',
         ]
+        additional_distance_modes = [
+            'geodesic', 'spearman', 'pearson',
+        ]
 
         if self.integration_type not in ['MultiOmics']:
             raise Exception('integration_type error! Enter MultiOmics.')
-        if self.distance_mode != 'geodesic' and self.distance_mode not in distance_modes:
+        if self.distance_mode not in distance_modes + additional_distance_modes:
             raise Exception('distance_mode error! Enter a correct distance_mode.')
         # ASDDDF: Readd ('tsne', 'barycentric')
         if self.project_mode not in ('nlma'):
@@ -83,7 +87,7 @@ class ComManDo(uc.UnionCom):
             raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
         # Create groupings (two-step)
-        # ASDF: Non-random, potentially OrthoClust
+        # ASDDF: Add KNN
         if self.two_step_num_partitions is not None:
             if self.two_step_num_partitions == 1:
                 warnings.warn('``two_step_num_partitions`` = 1 can lead to unexpected behavior.')
@@ -152,10 +156,9 @@ class ComManDo(uc.UnionCom):
                 )
 
             # Print group sizes (for skew debugging)
-            print('Two-Step group sizes:')
-            for group in self.idx_sorted_groups[:-1]:
-                print(len(group), end=', ')
-            print(len(self.idx_sorted_groups[-1]))
+            print('Two-Step group sizes')
+            group_len = [len(group) for group in self.idx_sorted_groups]
+            print(f'Min: {min(group_len)}\nMax: {max(group_len)}')
 
             # Create dataset transforms
             self.rep_transform = (
@@ -183,11 +186,30 @@ class ComManDo(uc.UnionCom):
                 def distance_function(df):
                     distances = geodesic_distances(df, self.kmax)
                     return np.array(distances)
+            elif self.distance_mode == 'spearman':
+                # ASDDDF: Compatibility with dense matrices
+                def distance_function(df):
+                    if df.shape[0] == 1:
+                        return np.array([0])
+                    distances, _ = stats.spearmanr(df.toarray(), axis=1)
+                    if len(distances.shape) == 0:
+                        distances = np.array([[1, distances], [distances, 1]])
+                    return (1 - np.array(distances)) / 2
+            elif self.distance_mode == 'pearson':
+                # ASDDDF: Compatibility with dense matrices
+                def distance_function(df):
+                    if df.shape[0] == 1:
+                        return np.array([0])
+                    distances = np.corrcoef(df.toarray())
+                    if len(distances.shape) == 0:
+                        distances = np.array([[1, distances], [distances, 1]])
+                    return (1 - np.array(distances)) / 2
             else:
                 def distance_function(df):
                     return pairwise_distances(df, metric=self.distance_mode)
 
             if (self.two_step_num_partitions is not None):
+                # TODO: Add non-average aggregation methods
                 # Intra-group distances
                 self.dist.append([])
                 for idx in self.idx_sorted_groups:
@@ -268,7 +290,11 @@ class ComManDo(uc.UnionCom):
                         epoch_override=self.two_step_pd_large,
                     )
 
-                    # # ASDDF: Is this line justified?
+                    # ASDDF: How should this be handled?
+                    use_diagonal = False
+                    if use_diagonal:
+                        for diag, rep_diag in zip(F_diag, F_rep.diag()):
+                            diag += rep_diag
                     F_rep = F_rep.fill_diagonal_(0)
 
                     # ASDDF: Store only upper triangular (?)
@@ -403,63 +429,6 @@ class ComManDo(uc.UnionCom):
                     )
                 )
             )
-
-            # # Simplified grad with casting (atol=2e-6)
-            # # 100k iterations: 5.84e-5, 5.77e-5, 5.76e-5
-            # FKy = torch.mm(F, Ky)
-            # grad = (
-            #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
-            #     - 4 * a * torch.mm(Kx, FKy)
-            #     + torch.mm(Mu, torch.t(In))
-            #     + torch.mm(Im, torch.t(Lambda))
-            #     + self.rho * (
-            #         # Faster to multiply than to cast/repeat
-            #         torch.mm(F, torch.mm(In, torch.t(In)))
-            #         + torch.mm(
-            #             Im,
-            #             torch.t(S - 2 * In)
-            #         )
-            #         + torch.mm(Imm, F)
-            #     )
-            # )
-
-            # # Simplified grad (atol=1e-6)
-            # # 100k iterations: 6.16e-5, 6.08e-5, 6.08e-5
-            # FKy = torch.mm(F, Ky)
-            # grad = (
-            #     4 * torch.mm(FKy, torch.mm(torch.t(F), FKy))
-            #     - 4 * a * torch.mm(Kx, FKy)
-            #     + torch.mm(Mu, torch.t(In))
-            #     + torch.mm(Im, torch.t(Lambda))
-            #     + self.rho * (
-            #         # In * In.t is just nxn mat filled with 1
-            #         torch.mm(F, torch.mm(In, torch.t(In)))
-            #         # Factor Im
-            #         - torch.mm(Im, torch.t(In))
-            #         + torch.mm(Im, torch.mm(torch.t(Im), F))
-            #         + torch.mm(Im, torch.t(S-In))
-            #     )
-            # )
-
-            # # Original grad
-            # # 100k iterations: 6.59e-5, 6.54e-5, 6.57e-5
-            # original_grad = (
-            #     4*torch.mm(F, torch.mm(Ky, torch.mm(torch.t(F), torch.mm(F, Ky))))
-            #     - 4*a*torch.mm(Kx, torch.mm(F, Ky))
-            #     + torch.mm(Mu, torch.t(In))
-            #     + torch.mm(Im, torch.t(Lambda))
-            #     + self.rho * (
-            #         torch.mm(F, torch.mm(In, torch.t(In)))
-            #         - torch.mm(Im, torch.t(In))
-            #         + torch.mm(Im, torch.mm(torch.t(Im), F))
-            #         + torch.mm(Im, torch.t(S-In))
-            #     )
-            # )
-            #
-            # if not torch.allclose(grad, original_grad, atol=1e-5):
-            #     print(f'Max grad was  {torch.max(torch.abs(original_grad))}')
-            #     print(f'Mean grad was {torch.mean(torch.abs(original_grad))}')
-            #     assert False, f'Error was {torch.max(torch.abs(grad - original_grad))}'
             timer.log('Gradient Calculation')
 
             if self.gradient_reduction is not None:
@@ -528,7 +497,7 @@ class ComManDo(uc.UnionCom):
         print('-' * 33)
         print('Performing NLMA')
         dataset_num = len(dataset)
-        mu = .9  # ASDF: Make this lower
+        mu = .9
         eps = 1e-8
         vec_func = None
 
@@ -536,6 +505,7 @@ class ComManDo(uc.UnionCom):
         W = [[None for j in range(dataset_num)] for i in range(dataset_num)]
 
         # Dense F
+        # ASDDF: Assess F value range for use as a simulated correlation matrix
         def expand_matrix(m):
             return torch.mm(
                 self.rep_transform,
@@ -543,6 +513,13 @@ class ComManDo(uc.UnionCom):
                     m,
                     torch.t(self.rep_transform),
                 ),
+            )
+
+        def expand_matrix_sparse(m):
+            return (
+                self.sparse_transform
+                * m
+                * self.sparse_transform.transpose()
             )
 
         if self.two_step_num_partitions is None:
@@ -570,6 +547,19 @@ class ComManDo(uc.UnionCom):
                 coef = coef_func(i, j)
                 W[i][j] *= coef
             W = torch.from_numpy(np.bmat(W)).float().cpu()
+
+        # Debug Print
+        # if self.two_step_num_partitions is not None:
+        #     for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+        #         # ASDF: Avoid needing to do this
+        #         F_diag, F_rep = F_list[i][j]
+        #         W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
+        #         W[i][i+j] = W[i][i+j].cpu()
+        #         if i != j:
+        #             W[i+j][i] = torch.t(W[i][i+j])
+        #     print(torch.from_numpy(np.bmat(W)).float().cpu())
+        # else:
+        #     print(W)
 
         print('Computing Laplacian')
         if self.two_step_num_partitions is not None:
@@ -629,25 +619,36 @@ class ComManDo(uc.UnionCom):
 
         if self.two_step_num_partitions is not None:
             print('Constructing L')
+            # ASDF: Look into culling side-effects
+            # ASDF: Avoid needing to do this
             for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                # ASDF: Avoid needing to do this
                 F_diag, F_rep = F_list[i][j]
-                W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
-                W[i][i+j] = W[i][i+j].cpu()
+
+                # Perform culling
+                culling_threshold = 1e-5
+                for mat in [*F_diag, F_rep]:
+                    mat[mat < culling_threshold] = 0
+
+                F_diag = [sparse.csr_matrix(diag) for diag in F_diag]
+                F_rep = sparse.csr_matrix(F_rep)
+                W[i][i+j] = sparse.block_diag(F_diag) + expand_matrix_sparse(F_rep)
                 if i != j:
-                    W[i+j][i] = torch.t(W[i][i+j])
-            L = torch.from_numpy(np.bmat(W)).float().cpu()
+                    W[i+j][i] = W[i][i+j].transpose()
+            L = sparse.bmat(W)
 
         print('Calculating eigenvectors')
         # ASDDF: Find way to calculate in compressed representation
-        # vals, vecs = sp_linalg.eigsh(L, )
-        vals, vecs = linalg.eigh(
-            L,
-            overwrite_a=True,
-            # ASDDF: Find better way to subset by index
-            # subset_by_index=(0, self.output_dim + 10),
-            subset_by_value=(eps, np.inf),
-        )
+        if self.two_step_num_partitions is not None:
+            # ASDDF: More reliable output dim
+            vals, vecs = sp_linalg.eigsh(L, k=self.output_dim*2, which='SM')
+        else:
+            vals, vecs = linalg.eigh(
+                L,
+                overwrite_a=True,
+                # ASDDF: Find better way to subset by index
+                # subset_by_index=(0, self.output_dim + 10),
+                subset_by_value=(eps, np.inf),
+            )
 
         # ASDDF: Shorten if eig solution supports filtering
         print('Filtering eigenvectors')
