@@ -1,6 +1,8 @@
 from time import perf_counter
 
+import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.decomposition import PCA
 
 
 def reduce_sample_data(df, num_samples=1000, num_features=1000):
@@ -56,3 +58,19 @@ class time_logger():
             running_total += avg_time_elapsed
             print(f'{k}: {avg_time_elapsed}')
         print(f'Total: {running_total}')
+
+
+def visualize_mapping(mapping, primary=0):
+    """Visualize a mapping given as (*mappings) using PCA, first mapping is the primary one"""
+    pca = PCA(n_components=2)
+    pca.fit(mapping[primary])
+    for i, m in enumerate(mapping):
+        m_pca = pca.transform(m)
+        label = f'Mapping {i+1}'
+        if i == 0:
+            s, c = 20, 'orange'
+        else:
+            s, c = 2, 'blue'
+        plt.scatter(m_pca[:, 0], m_pca[:, 1], label=label, s=s, c=c)
+    plt.title('ComManDo PCA Plot')
+    plt.legend(loc='best')

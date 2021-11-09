@@ -187,15 +187,22 @@ class ComManDo(uc.UnionCom):
                     distances = geodesic_distances(df, self.kmax)
                     return np.array(distances)
             elif self.distance_mode == 'spearman':
+                # Note: Method may not work if empty features are given
                 # ASDDDF: Compatibility with dense matrices
                 def distance_function(df):
                     if df.shape[0] == 1:
                         return np.array([0])
                     distances, _ = stats.spearmanr(df.toarray(), axis=1)
+                    if np.isnan(distances).any():
+                        raise Exception(
+                            'Data is not well conditioned for spearman method '
+                            '(scipy.stats.spearmanr returned ``np.nan``)'
+                        )
                     if len(distances.shape) == 0:
                         distances = np.array([[1, distances], [distances, 1]])
                     return (1 - np.array(distances)) / 2
             elif self.distance_mode == 'pearson':
+                # Note: Method may not work if empty features are given
                 # ASDDDF: Compatibility with dense matrices
                 def distance_function(df):
                     if df.shape[0] == 1:
@@ -548,19 +555,6 @@ class ComManDo(uc.UnionCom):
                 W[i][j] *= coef
             W = torch.from_numpy(np.bmat(W)).float().cpu()
 
-        # Debug Print
-        # if self.two_step_num_partitions is not None:
-        #     for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-        #         # ASDF: Avoid needing to do this
-        #         F_diag, F_rep = F_list[i][j]
-        #         W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
-        #         W[i][i+j] = W[i][i+j].cpu()
-        #         if i != j:
-        #             W[i+j][i] = torch.t(W[i][i+j])
-        #     print(torch.from_numpy(np.bmat(W)).float().cpu())
-        # else:
-        #     print(W)
-
         print('Computing Laplacian')
         if self.two_step_num_partitions is not None:
             # Calculate in compressed representation
@@ -617,37 +611,66 @@ class ComManDo(uc.UnionCom):
             d = -L.sum(axis=0)
             L.flat[::n_nodes + 1] = d
 
+        # ASDF: Remove debug var
+        use_culling = False
         if self.two_step_num_partitions is not None:
             print('Constructing L')
-            # ASDF: Look into culling side-effects
+            # ASDF: Revise this
             # ASDF: Avoid needing to do this
-            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                F_diag, F_rep = F_list[i][j]
+            if use_culling:
+                # ASDF: Look into culling side-effects
+                for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+                    F_diag, F_rep = F_list[i][j]
 
-                # Perform culling
-                culling_threshold = 1e-5
-                for mat in [*F_diag, F_rep]:
-                    mat[mat < culling_threshold] = 0
+                    # Perform culling
+                    culling_threshold = 1e-3
+                    for mat in [*F_diag, F_rep]:
+                        mat[torch.abs(mat) < culling_threshold] = 0
 
-                F_diag = [sparse.csr_matrix(diag.cpu()) for diag in F_diag]
-                F_rep = sparse.csr_matrix(F_rep.cpu())
-                W[i][i+j] = sparse.block_diag(F_diag) + expand_matrix_sparse(F_rep)
-                if i != j:
-                    W[i+j][i] = W[i][i+j].transpose()
-            L = sparse.bmat(W)
+                    # Replace with sparse values
+                    F_list[i][j] = (
+                        [sparse.csr_matrix(diag.cpu()) for diag in F_diag],
+                        sparse.csr_matrix(F_rep.cpu())
+                    )
+                    F_diag, F_rep = F_list[i][j]
+
+                    # Construct large matrix
+                    W[i][i+j] = sparse.block_diag(F_diag) + expand_matrix_sparse(F_rep)
+                    if i != j:
+                        W[i+j][i] = W[i][i+j].transpose()
+                L = sparse.bmat(W, format='csr')
+
+            else:
+                for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
+                    F_diag, F_rep = F_list[i][j]
+                    W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
+                    W[i][i+j] = W[i][i+j].cpu()
+                    if i != j:
+                        W[i+j][i] = torch.t(W[i][i+j])
+                L = torch.from_numpy(np.bmat(W)).float().cpu()
 
         print('Calculating eigenvectors')
         # ASDDF: Find way to calculate in compressed representation
-        if self.two_step_num_partitions is not None:
+        if use_culling:
             # ASDDF: More reliable output dim
-            vals, vecs = sp_linalg.eigsh(L, k=self.output_dim*2, which='SM')
+            vals, vecs = sp_linalg.eigsh(
+                L,
+                # ASDDF: Find better k
+                k=self.output_dim*2,
+                tol=1e-5,
+                which='SM',
+            )
         else:
             vals, vecs = linalg.eigh(
                 L,
+                lower=False,
                 overwrite_a=True,
+                # ASDDDF: Add options for user
+                # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
+                driver='evx',
                 # ASDDF: Find better way to subset by index
-                # subset_by_index=(0, self.output_dim + 10),
-                subset_by_value=(eps, np.inf),
+                subset_by_index=(0, self.output_dim + 10),
+                # subset_by_value=(eps, np.inf),
             )
 
         # ASDDF: Shorten if eig solution supports filtering
