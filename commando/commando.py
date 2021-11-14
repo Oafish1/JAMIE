@@ -133,7 +133,8 @@ class ComManDo(uc.UnionCom):
                         (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
                     ):
                         match_result[i][j] = (
-                            match_result[i][j][self.idx_all_inv][:, self.idx_all_inv]
+                            (1/self.two_step_redundancy)
+                            * match_result[i][j][self.idx_all_inv][:, self.idx_all_inv]
                         )
                 else:
                     # ASDDF: Revise aggregation method
@@ -142,7 +143,8 @@ class ComManDo(uc.UnionCom):
                         (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
                     ):
                         match_result[i][j] += (
-                            match_output[i][j][self.idx_all_inv][:, self.idx_all_inv]
+                            (1/self.two_step_redundancy)
+                            * match_output[i][j][self.idx_all_inv][:, self.idx_all_inv]
                         )
 
                 # Reset dataset order
@@ -277,7 +279,12 @@ class ComManDo(uc.UnionCom):
 
         print('Calculating eigenvectors')
         if self.construct_sparse:
-            vals, vecs = sp_linalg.eigsh(L, k=(L.shape[0] - 1), which='SM')
+            vals, vecs = sp_linalg.eigsh(
+                L,
+                # ASDF: Replace this
+                k=min((L.shape[0] - 1), 3*self.output_dim),
+                which='SM',
+            )
         else:
             # ASDDF: Find way to calculate in compressed representation
             # to avoid L construction
