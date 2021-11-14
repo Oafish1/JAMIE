@@ -4,7 +4,6 @@ import warnings
 
 import numpy as np
 from scipy import linalg, sparse, stats
-from scipy.sparse import linalg as sp_linalg
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.preprocessing import normalize
 import torch
@@ -24,6 +23,7 @@ class ComManDo(uc.UnionCom):
         two_step_aggregation='random',
         two_step_log_pd=None,
         two_step_num_partitions=None,
+        two_step_redundancy=1,
         two_step_pd_large=None,
         **kwargs,
     ):
@@ -36,6 +36,7 @@ class ComManDo(uc.UnionCom):
         self.two_step_pd_large = two_step_pd_large
         self.two_step_aggregation = two_step_aggregation
         self.two_step_num_partitions = two_step_num_partitions
+        self.two_step_redundancy = two_step_redundancy
 
         self.prime_dual_verbose_timer = prime_dual_verbose_timer
 
@@ -79,174 +80,72 @@ class ComManDo(uc.UnionCom):
         time1 = time.time()
         init_random_seed(self.manual_seed)
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        dataset_num = len(dataset)
-        for i in range(dataset_num):
-            self.row.append(np.shape(dataset[i])[0])
-            self.col.append(np.shape(dataset[i])[1])
+        self.dataset = dataset
+        self.dataset_num = len(self.dataset)
+        for i in range(self.dataset_num):
+            self.row.append(np.shape(self.dataset[i])[0])
+            self.col.append(np.shape(self.dataset[i])[1])
         if self.project_mode == 'nlma' and not (np.array(self.row) == self.row[0]).all():
             raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
-        # Create groupings (two-step)
-        # ASDDF: Add KNN
-        if self.two_step_num_partitions is not None:
-            if self.two_step_num_partitions == 1:
-                warnings.warn('``two_step_num_partitions`` = 1 can lead to unexpected behavior.')
+        if self.two_step_num_partitions is None or self.two_step_redundancy == 1:
+            # Create groupings (two-step)
+            self.generate_group_idx()
 
-            self.idx_all = np.arange(self.row[i])
+            # Compute the distance matrix
+            self.compute_distances()
 
-            """
-            Each method modifies a few vars
+            # Find correspondence between samples
+            match_result = self.match()
 
-            ``idx_all`` is the idx to sort the data (into group order)
-            ``idx_all_inv`` is the idx to unsort the data
-            ``idx_groups`` is the idx to access each group in the unsorted array
-            ``idx_sorted_groups`` is the idx to access each group in the sorted array
-
-            Ex.
-            We have group indexes [[3,2],[0,1]]
-            ``idx_all``
-            [3,2,0,1]
-            ``idx_all_inv``
-            [2,3,1,0]
-            ``idx_groups``
-            [[3,2],[0,1]]
-            ``idx_sorted_groups``
-            [[0,1],[2,3]]
-            """
-            if self.two_step_aggregation == 'random':
-                # Random sampling will generally lead to similar means,
-                # leading to large F collapse
-                np.random.shuffle(self.idx_all)
-                self.idx_groups = np.array_split(self.idx_all, self.two_step_num_partitions)
-                self.idx_sorted_groups = np.array_split(
-                    np.arange(self.row[0]),
-                    self.two_step_num_partitions,
-                )
-                self.idx_all_inv = np.argsort(self.idx_all)
-
-            elif self.two_step_aggregation == 'kmed':
-                from sklearn_extra.cluster import KMedoids
-
-                # ASDDF: Take both datasets into account
-                # ASDDDF: Add distance metric changeability
-                cluster = KMedoids(
-                    n_clusters=self.two_step_num_partitions,
-                    random_state=self.manual_seed,
-                    method='alternate',
-                    init='k-medoids++',
-                ).fit(dataset[0])
-                labels = cluster.labels_
-                self.idx_all = np.argsort(labels)
-                self.idx_all_inv = np.argsort(self.idx_all)
-                self.idx_groups = [
-                    np.arange(self.row[1])[labels == i]
-                    for i in range(self.two_step_num_partitions)
-                ]
-                running_idx = []
-                for group in self.idx_groups[:-1]:
-                    if len(running_idx) == 0:
-                        running_idx.append(len(group))
-                    else:
-                        running_idx.append(len(group) + running_idx[-1])
-                self.idx_sorted_groups = np.split(np.arange(self.row[0]), running_idx)
-            else:
-                raise Exception(
-                    '``two_step_aggregation`` type '
-                    f"'{self.two_step_aggregation}' not found"
-                )
-
-            # Print group sizes (for skew debugging)
-            print('Two-Step group sizes')
-            group_len = [len(group) for group in self.idx_sorted_groups]
-            print(f'Min: {min(group_len)}\nMax: {max(group_len)}')
-
-            # Create dataset transforms
-            self.rep_transform = (
-                torch.zeros((self.row[i], self.two_step_num_partitions))
-                .float().to(self.device)
-            )
-            for k, idx in enumerate(self.idx_groups):
-                self.rep_transform[idx, k] = 1
-            self.sparse_transform = sparse.csr_matrix(self.rep_transform.cpu())
-
-            # Sort dataset
-            for i in range(dataset_num):
-                dataset[i] = dataset[i][self.idx_all]
-
-        # Compute the distance matrix
-        print('Shape of Raw data')
-        for i in range(dataset_num):
-            print('Dataset {}:'.format(i), np.shape(dataset[i]))
-            dataset[i] = (
-                (dataset[i] - np.min(dataset[i]))
-                / (np.max(dataset[i]) - np.min(dataset[i]))
+            #  Project to common embedding
+            integrated_data = self.project_nlma(
+                match_result,
+                compressed=(self.two_step_num_partitions is not None)
             )
 
-            if self.distance_mode == 'geodesic':
-                def distance_function(df):
-                    distances = geodesic_distances(df, self.kmax)
-                    return np.array(distances)
-            elif self.distance_mode == 'spearman':
-                # Note: Method may not work if empty features are given
-                # ASDDDF: Compatibility with dense matrices
-                def distance_function(df):
-                    if df.shape[0] == 1:
-                        return np.array([0])
-                    distances, _ = stats.spearmanr(df.toarray(), axis=1)
-                    if np.isnan(distances).any():
-                        raise Exception(
-                            'Data is not well conditioned for spearman method '
-                            '(scipy.stats.spearmanr returned ``np.nan``)'
+            # Unsort data
+            if self.two_step_num_partitions is not None:
+                integrated_data = tuple(
+                    integrated_data[i][self.idx_all_inv]
+                    for i in range(self.dataset_num)
+                )
+        else:
+            # ASDDF: Optimize this (distance calc, use compressed representation, etc.)
+            match_result = None
+            for i in range(self.two_step_redundancy):
+                print(f'\nBeginning redundant step {i+1}')
+                # Create groupings (two-step)
+                self.generate_group_idx()
+
+                # Compute the distance matrix
+                self.compute_distances()
+
+                # Find correspondence between samples
+                if match_result is None:
+                    match_result = self.compressed_to_dense(self.match())
+                    for i, j in (
+                        (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
+                    ):
+                        match_result[i][j] = (
+                            match_result[i][j][self.idx_all_inv][:, self.idx_all_inv]
                         )
-                    if len(distances.shape) == 0:
-                        distances = np.array([[1, distances], [distances, 1]])
-                    return (1 - np.array(distances)) / 2
-            elif self.distance_mode == 'pearson':
-                # Note: Method may not work if empty features are given
-                # ASDDDF: Compatibility with dense matrices
-                def distance_function(df):
-                    if df.shape[0] == 1:
-                        return np.array([0])
-                    distances = np.corrcoef(df.toarray())
-                    if len(distances.shape) == 0:
-                        distances = np.array([[1, distances], [distances, 1]])
-                    return (1 - np.array(distances)) / 2
-            else:
-                def distance_function(df):
-                    return pairwise_distances(df, metric=self.distance_mode)
+                else:
+                    # ASDDF: Revise aggregation method
+                    match_output = self.compressed_to_dense(self.match())
+                    for i, j in (
+                        (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
+                    ):
+                        match_result[i][j] += (
+                            match_output[i][j][self.idx_all_inv][:, self.idx_all_inv]
+                        )
 
-            if (self.two_step_num_partitions is not None):
-                # TODO: Add non-average aggregation methods
-                # Intra-group distances
-                self.dist.append([])
-                for idx in self.idx_sorted_groups:
-                    distances = distance_function(dataset[i][idx])
-                    self.dist[-1].append(
-                        torch.from_numpy(distances).float().to(self.device)
-                    )
+                # Reset dataset order
+                for i in range(self.dataset_num):
+                    self.dataset[i] = self.dataset[i][self.idx_all_inv]
 
-                # Inter-group distances
-                agg_intra = normalize(self.sparse_transform).transpose() * dataset[i]
-                agg_intra = distance_function(agg_intra)
-                self.dist_large.append(
-                    torch.from_numpy(agg_intra).float().to(self.device)
-                )
-            else:
-                distances = distance_function(dataset[i])
-                self.dist.append(torch.from_numpy(distances).float().to(self.device))
-
-        # Find correspondence between samples
-        match_result = self.match(dataset=dataset)
-
-        #  Project to common embedding
-        integrated_data = self.project_nlma(dataset, match_result)
-
-        # Unsort data
-        if self.two_step_num_partitions is not None:
-            integrated_data = tuple(
-                integrated_data[i][self.idx_all_inv]
-                for i in range(dataset_num)
-            )
+            #  Project to common embedding
+            integrated_data = self.project_nlma(match_result)
 
         print('-' * 33)
         print('ComManDo Done!')
@@ -255,14 +154,159 @@ class ComManDo(uc.UnionCom):
 
         return integrated_data
 
-    def match(self, dataset):
+    def project_nlma(self, F_list, compressed=False):
+        """
+        Projects using `F` matrices as correspondence using NLMA, heavily
+        relies on methodology and code from
+        https://github.com/daifengwanglab/ManiNetCluster
+        """
+        print('-' * 33)
+        print('Performing NLMA')
+        mu = .9
+        eps = 1e-8
+        vec_func = None
+
+        # ASDDF: Assess F value range for use as a simulated correlation matrix
+        if not compressed:
+            print('Constructing Dense W')
+            W = [[None for j in range(self.dataset_num)] for i in range(self.dataset_num)]
+            for i, j in (
+                (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
+            ):
+                W[i][i+j] = F_list[i][j].cpu()
+                if i != j:
+                    W[i+j][i] = torch.t(W[i][i+j])
+
+        print('Applying Coefficients')
+        # NOTE: Also includes final W assembly if not compressed
+        coef_func = lambda a, b: mu if a == b else 1 - mu
+        if compressed:
+            for i, j in (
+                (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
+            ):
+                coef = coef_func(i, i+j)
+                # Apply in compressed representation
+                F_list[i][j] = (
+                    [
+                        coef * F_diag_component
+                        for F_diag_component in F_list[i][j][0]
+                    ],
+                    coef * F_list[i][j][1]
+                )
+        else:
+            for i, j in product(*(2 * [range(self.dataset_num)])):
+                coef = coef_func(i, j)
+                W[i][j] *= coef
+            W = torch.from_numpy(np.bmat(W)).float().cpu()
+
+        print('Computing Laplacian')
+        if compressed:
+            # Calculate in compressed representation
+            # Zero diagonal
+            for i in range(self.dataset_num):
+                for F_diag in F_list[i][0][0]:
+                    dim = F_diag.shape[0]
+                    F_diag.view(-1)[::dim + 1] = 0
+
+            # Invert values
+            for i, j in (
+                (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
+            ):
+                F_diag, F_rep = F_list[i][j]
+                for mat in (*F_diag, F_rep):
+                    mat *= -1
+
+            # Get degrees
+            def get(upper_triangle_block, i, j):
+                if j >= i:
+                    return(upper_triangle_block[i][j-i])
+                output = upper_triangle_block[j][i-j]
+                return (
+                    [torch.t(mat) for mat in output[0]],
+                    torch.t(output[1])
+                )
+
+            new_diag = []
+            for col in range(self.dataset_num):
+                running_col_sum = torch.zeros(self.row[0]).float().to(self.device)
+                for row in range(self.dataset_num):
+                    F_diag, F_rep = get(F_list, row, col)
+                    rep_col_sum = torch.sum(F_rep, 0)
+                    total_col_sum = [
+                        rep + torch.sum(mat, 0)
+                        for mat, rep in zip(F_diag, rep_col_sum)
+                    ]
+                    running_col_sum += torch.cat(total_col_sum)
+                running_col_sum *= -1
+                new_diag.append(running_col_sum)
+            new_diag = torch.cat(new_diag)
+
+            # Reassign to diagonal
+            start_idx = 0
+            for i in range(self.dataset_num):
+                for F_diag in F_list[i][0][0]:
+                    dim = F_diag.shape[0]
+                    F_diag.view(-1)[::dim + 1] = new_diag[start_idx:start_idx+dim]
+                    start_idx += dim
+        else:
+            # Dense calculation of scipy.sparse.csgraph from
+            # ManiNetCluster
+            n_nodes = self.row[0]
+            L = -np.asarray(W)
+            L.flat[::n_nodes + 1] = 0
+            d = -L.sum(axis=0)
+            L.flat[::n_nodes + 1] = d
+
+        if compressed:
+            print('Constructing L')
+            L = self.assemble_matrix(F_list)
+
+        print('Calculating eigenvectors')
+        # ASDDF: Find way to calculate in compressed representation
+        # to avoid L construction
+        vals, vecs = linalg.eigh(
+            L,
+            lower=False,
+            overwrite_a=True,
+            # ASDDDF: Add options for user
+            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
+            # Note: Default of 'evx' is only best when taking very few eigenvectors
+            # from a large matrix
+            driver='evx',
+            # ASDDF: Find better way to subset by index
+            # subset_by_index=(0, self.output_dim + 10),
+            subset_by_value=(eps, np.inf),
+        )
+
+        # ASDDF: Shorten if eig solution supports filtering
+        print('Filtering eigenvectors')
+        idx = np.argsort(vals)
+        for i in range(len(idx)):
+            if vals[idx[i]] >= eps:
+                break
+        vecs = vecs.real[:, idx[i:]]
+        if vec_func:
+            vecs = vec_func(vecs)
+
+        for i in range(vecs.shape[1]):
+            vecs[:, i] /= np.linalg.norm(vecs[:, i])
+
+        print('Perfoming mapping')
+        maps = []
+        min_idx = 0
+        for dx in self.row:
+            map = vecs[min_idx:min_idx + dx, :self.output_dim]
+            maps.append(map)
+            min_idx += dx
+
+        return tuple(maps)
+
+    def match(self):
         """Find correspondence between multi-omics datasets"""
         print('Device:', self.device)
-        dataset_num = len(dataset)
-
-        cor_pairs = [[] for i in range(dataset_num)]
-        for i in range(dataset_num):
-            for j in range(i, dataset_num):
+        cor_pairs = [[] for i in range(self.dataset_num)]
+        for i in range(self.dataset_num):
+            for j in range(i, self.dataset_num):
                 print('-' * 33)
                 print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
                 if self.two_step_num_partitions is not None:
@@ -495,204 +539,214 @@ class ComManDo(uc.UnionCom):
 
         return F
 
-    def project_nlma(self, dataset, F_list):
-        """
-        Projects using `F` matrices as correspondence using NLMA, heavily
-        relies on methodology and code from
-        https://github.com/daifengwanglab/ManiNetCluster
-        """
-        print('-' * 33)
-        print('Performing NLMA')
-        dataset_num = len(dataset)
-        mu = .9
-        eps = 1e-8
-        vec_func = None
-
-        # Set up manifold
-        W = [[None for j in range(dataset_num)] for i in range(dataset_num)]
-
-        # Dense F
-        # ASDDF: Assess F value range for use as a simulated correlation matrix
-        def expand_matrix(m):
-            return torch.mm(
-                self.rep_transform,
-                torch.mm(
-                    m,
-                    torch.t(self.rep_transform),
-                ),
-            )
-
-        def expand_matrix_sparse(m):
-            return (
-                self.sparse_transform
-                * m
-                * self.sparse_transform.transpose()
-            )
-
-        if self.two_step_num_partitions is None:
-            print('Constructing Dense W')
-            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                W[i][i+j] = F_list[i][j].cpu()
-                if i != j:
-                    W[i+j][i] = torch.t(W[i][i+j])
-
-        print('Applying Coefficients')
-        coef_func = lambda a, b: mu if a == b else 1 - mu
+    def generate_group_idx(self):
+        """Helper function to generate/refresh group idx"""
         if self.two_step_num_partitions is not None:
-            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                coef = coef_func(i, i+j)
-                # Apply in compressed representation
-                F_list[i][j] = (
-                    [
-                        coef * F_diag_component
-                        for F_diag_component in F_list[i][j][0]
-                    ],
-                    coef * F_list[i][j][1]
-                )
-        else:
-            for i, j in product(*(2 * [range(dataset_num)])):
-                coef = coef_func(i, j)
-                W[i][j] *= coef
-            W = torch.from_numpy(np.bmat(W)).float().cpu()
-
-        print('Computing Laplacian')
-        if self.two_step_num_partitions is not None:
-            # Calculate in compressed representation
-            # Zero diagonal
-            for i in range(dataset_num):
-                for F_diag in F_list[i][0][0]:
-                    dim = F_diag.shape[0]
-                    F_diag.view(-1)[::dim + 1] = 0
-
-            # Invert values
-            for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                F_diag, F_rep = F_list[i][j]
-                for mat in (*F_diag, F_rep):
-                    mat *= -1
-
-            # Get degrees
-            def get(upper_triangle_block, i, j):
-                if j >= i:
-                    return(upper_triangle_block[i][j-i])
-                output = upper_triangle_block[j][i-j]
-                return (
-                    [torch.t(mat) for mat in output[0]],
-                    torch.t(output[1])
+            if self.two_step_num_partitions == 1:
+                warnings.warn('``two_step_num_partitions`` = 1 can lead to unexpected behavior.')
+            if self.two_step_redundancy < 1:
+                raise Exception(
+                    f'two_step_redundancy: {self.two_step_redundancy} is not supported'
                 )
 
-            new_diag = []
-            for col in range(dataset_num):
-                running_col_sum = torch.zeros(self.row[0]).float().to(self.device)
-                for row in range(dataset_num):
-                    F_diag, F_rep = get(F_list, row, col)
-                    rep_col_sum = torch.sum(F_rep, 0)
-                    total_col_sum = [
-                        rep + torch.sum(mat, 0)
-                        for mat, rep in zip(F_diag, rep_col_sum)
-                    ]
-                    running_col_sum += torch.cat(total_col_sum)
-                running_col_sum *= -1
-                new_diag.append(running_col_sum)
-            new_diag = torch.cat(new_diag)
+            """
+            Each method modifies a few vars
 
-            # Reassign to diagonal
-            start_idx = 0
-            for i in range(dataset_num):
-                for F_diag in F_list[i][0][0]:
-                    dim = F_diag.shape[0]
-                    F_diag.view(-1)[::dim + 1] = new_diag[start_idx:start_idx+dim]
-                    start_idx += dim
-        else:
-            # Dense calculation of scipy.sparse.csgraph from
-            # ManiNetCluster
-            n_nodes = self.row[0]
-            L = -np.asarray(W)
-            L.flat[::n_nodes + 1] = 0
-            d = -L.sum(axis=0)
-            L.flat[::n_nodes + 1] = d
+            ``idx_all`` is the idx to sort the data (into group order)
+            ``idx_all_inv`` is the idx to unsort the data
+            ``idx_groups`` is the idx to access each group in the unsorted array
+            ``idx_sorted_groups`` is the idx to access each group in the sorted array
 
-        # ASDF: Remove debug var
-        use_culling = False
-        if self.two_step_num_partitions is not None:
-            print('Constructing L')
-            # ASDF: Revise this
-            # ASDF: Avoid needing to do this
-            if use_culling:
-                # ASDF: Look into culling side-effects
-                for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                    F_diag, F_rep = F_list[i][j]
+            Ex.
+            We have group indexes [[3,2],[0,1]]
+            ``idx_all``
+            [3,2,0,1]
+            ``idx_all_inv``
+            [2,3,1,0]
+            ``idx_groups``
+            [[3,2],[0,1]]
+            ``idx_sorted_groups``
+            [[0,1],[2,3]]
+            """
+            # Assumes datasets are of the same size (NLMA)
+            self.idx_all = np.arange(self.row[0])
 
-                    # Perform culling
-                    culling_threshold = 1e-3
-                    for mat in [*F_diag, F_rep]:
-                        mat[torch.abs(mat) < culling_threshold] = 0
+            # ASDDF: Add more methods
+            if self.two_step_aggregation == 'random':
+                # Random sampling will generally lead to similar means,
+                # potentially leading to large F collapse
+                np.random.shuffle(self.idx_all)
+                self.idx_groups = np.array_split(self.idx_all, self.two_step_num_partitions)
+                self.idx_sorted_groups = np.array_split(
+                    np.arange(self.row[0]),
+                    self.two_step_num_partitions,
+                )
+                self.idx_all_inv = np.argsort(self.idx_all)
 
-                    # Replace with sparse values
-                    F_list[i][j] = (
-                        [sparse.csr_matrix(diag.cpu()) for diag in F_diag],
-                        sparse.csr_matrix(F_rep.cpu())
+            elif self.two_step_aggregation == 'kmed':
+                if self.two_step_redundancy < 1:
+                    raise Exception(
+                        f'two_step_redundancy: {self.two_step_redundancy} > 1 is not supported '
+                        f'for two_step_aggregation: {self.two_step_aggregation}.'
                     )
-                    F_diag, F_rep = F_list[i][j]
 
-                    # Construct large matrix
-                    W[i][i+j] = sparse.block_diag(F_diag) + expand_matrix_sparse(F_rep)
-                    if i != j:
-                        W[i+j][i] = W[i][i+j].transpose()
-                L = sparse.bmat(W, format='csr')
+                from sklearn_extra.cluster import KMedoids
 
+                # ASDDF: Take both datasets into account
+                # ASDDDF: Add distance metric changeability
+                cluster = KMedoids(
+                    n_clusters=self.two_step_num_partitions,
+                    random_state=self.manual_seed,
+                    method='alternate',
+                    init='k-medoids++',
+                ).fit(self.dataset[0])
+                labels = cluster.labels_
+                self.idx_all = np.argsort(labels)
+                self.idx_all_inv = np.argsort(self.idx_all)
+                self.idx_groups = [
+                    np.arange(self.row[1])[labels == i]
+                    for i in range(self.two_step_num_partitions)
+                ]
+                running_idx = []
+                for group in self.idx_groups[:-1]:
+                    if len(running_idx) == 0:
+                        running_idx.append(len(group))
+                    else:
+                        running_idx.append(len(group) + running_idx[-1])
+                self.idx_sorted_groups = np.split(np.arange(self.row[0]), running_idx)
             else:
-                for i, j in ((i, j) for i in range(dataset_num) for j in range(dataset_num-i)):
-                    F_diag, F_rep = F_list[i][j]
-                    W[i][i+j] = torch.block_diag(*F_diag) + expand_matrix(F_rep)
-                    W[i][i+j] = W[i][i+j].cpu()
-                    if i != j:
-                        W[i+j][i] = torch.t(W[i][i+j])
-                L = torch.from_numpy(np.bmat(W)).float().cpu()
+                raise Exception(
+                    '``two_step_aggregation`` type '
+                    f"'{self.two_step_aggregation}' not found"
+                )
 
-        print('Calculating eigenvectors')
-        # ASDDF: Find way to calculate in compressed representation
-        if use_culling:
-            # ASDDF: More reliable output dim
-            vals, vecs = sp_linalg.eigsh(
-                L,
-                # ASDDF: Find better k
-                k=self.output_dim*2,
-                tol=1e-5,
-                which='SM',
+            # Print group sizes (for skew debugging)
+            print('Two-Step group sizes')
+            group_len = [len(group) for group in self.idx_sorted_groups]
+            print(f'Min: {min(group_len)}\nMax: {max(group_len)}')
+
+            # Create dataset transforms
+            self.rep_transform = (
+                torch.zeros((self.row[0], self.two_step_num_partitions))
+                .float().to(self.device)
             )
-        else:
-            vals, vecs = linalg.eigh(
-                L,
-                lower=False,
-                overwrite_a=True,
-                # ASDDDF: Add options for user
-                # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
-                driver='evx',
-                # ASDDF: Find better way to subset by index
-                subset_by_index=(0, self.output_dim + 10),
-                # subset_by_value=(eps, np.inf),
+            for k, idx in enumerate(self.idx_groups):
+                self.rep_transform[idx, k] = 1
+            self.sparse_transform = sparse.csr_matrix(self.rep_transform.cpu())
+
+            # Sort dataset
+            for i in range(self.dataset_num):
+                self.dataset[i] = self.dataset[i][self.idx_all]
+
+    def compute_distances(self):
+        """Helper function to compute distances for each dataset"""
+        print('Shape of Raw data')
+        for i in range(self.dataset_num):
+            print('Dataset {}:'.format(i), np.shape(self.dataset[i]))
+            self.dataset[i] = (
+                (self.dataset[i] - np.min(self.dataset[i]))
+                / (np.max(self.dataset[i]) - np.min(self.dataset[i]))
             )
 
-        # ASDDF: Shorten if eig solution supports filtering
-        print('Filtering eigenvectors')
-        idx = np.argsort(vals)
-        for i in range(len(idx)):
-            if vals[idx[i]] >= eps:
-                break
-        vecs = vecs.real[:, idx[i:]]
-        if vec_func:
-            vecs = vec_func(vecs)
+            if self.distance_mode == 'geodesic':
+                def distance_function(df):
+                    distances = geodesic_distances(df, self.kmax)
+                    return np.array(distances)
+            elif self.distance_mode == 'spearman':
+                # Note: Method may not work if empty features are given
+                # ASDDDF: Compatibility with dense matrices
+                def distance_function(df):
+                    if df.shape[0] == 1:
+                        return np.array([0])
+                    distances, _ = stats.spearmanr(df.toarray(), axis=1)
+                    if np.isnan(distances).any():
+                        raise Exception(
+                            'Data is not well conditioned for spearman method '
+                            '(scipy.stats.spearmanr returned ``np.nan``)'
+                        )
+                    if len(distances.shape) == 0:
+                        distances = np.array([[1, distances], [distances, 1]])
+                    return (1 - np.array(distances)) / 2
+            elif self.distance_mode == 'pearson':
+                # Note: Method may not work if empty features are given
+                # ASDDDF: Compatibility with dense matrices
+                def distance_function(df):
+                    if df.shape[0] == 1:
+                        return np.array([0])
+                    distances = np.corrcoef(df.toarray())
+                    if len(distances.shape) == 0:
+                        distances = np.array([[1, distances], [distances, 1]])
+                    return (1 - np.array(distances)) / 2
+            else:
+                def distance_function(df):
+                    return pairwise_distances(df, metric=self.distance_mode)
 
-        for i in range(vecs.shape[1]):
-            vecs[:, i] /= np.linalg.norm(vecs[:, i])
+            if (self.two_step_num_partitions is not None):
+                # TODO: Add non-average aggregation methods
+                # Intra-group distances
+                self.dist.append([])
+                for idx in self.idx_sorted_groups:
+                    distances = distance_function(self.dataset[i][idx])
+                    self.dist[-1].append(
+                        torch.from_numpy(distances).float().to(self.device)
+                    )
 
-        print('Perfoming mapping')
-        maps = []
-        min_idx = 0
-        for data in dataset:
-            dx = data.shape[0]
-            map = vecs[min_idx:min_idx + dx, :self.output_dim]
-            maps.append(map)
-            min_idx += dx
+                # Inter-group distances
+                agg_intra = normalize(self.sparse_transform).transpose() * self.dataset[i]
+                agg_intra = distance_function(agg_intra)
+                self.dist_large.append(
+                    torch.from_numpy(agg_intra).float().to(self.device)
+                )
+            else:
+                distances = distance_function(self.dataset[i])
+                self.dist.append(torch.from_numpy(distances).float().to(self.device))
 
-        return tuple(maps)
+    def compressed_to_dense(self, F_list):
+        """
+        Convert compressed F_list to dense representation
+        (equivalent to ``self.two_step_num_partitions`` None)
+
+        Output
+        ------
+        F_list containing all F matrices
+        """
+        for i, j in ((i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)):
+            F_diag, F_rep = F_list[i][j]
+            dense = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
+            F_list[i][j] = dense.cpu()
+        return F_list
+
+    def assemble_matrix(self, F_list):
+        """
+        Assemble full matrix
+
+        Output
+        ------
+        Single matrix combining all F matrices
+        """
+        W = [[None for j in range(self.dataset_num)] for i in range(self.dataset_num)]
+        for i, j in ((i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)):
+            F_diag, F_rep = F_list[i][j]
+            W[i][i+j] = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
+            W[i][i+j] = W[i][i+j].cpu()
+            if i != j:
+                W[i+j][i] = torch.t(W[i][i+j])
+        return torch.from_numpy(np.bmat(W)).float().cpu()
+
+    def expand_matrix(self, m):
+        """Helper function to cast two_step large matrix to its final size"""
+        return torch.mm(
+            self.rep_transform,
+            torch.mm(
+                m,
+                torch.t(self.rep_transform),
+            ),
+        )
+
+    def expand_matrix_sparse(self, m):
+        """Helper function to cast sparse two_step large matrix to its final size"""
+        return (
+            self.sparse_transform
+            * m
+            * self.sparse_transform.transpose()
+        )
