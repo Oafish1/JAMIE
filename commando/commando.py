@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 from scipy import linalg, sparse, stats
+from scipy.sparse import linalg as sp_linalg
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.preprocessing import normalize
 import torch
@@ -25,6 +26,7 @@ class ComManDo(uc.UnionCom):
         two_step_num_partitions=None,
         two_step_redundancy=1,
         two_step_pd_large=None,
+        two_step_include_large=True,
         **kwargs,
     ):
         if 'project_mode' not in kwargs:
@@ -34,6 +36,7 @@ class ComManDo(uc.UnionCom):
         self.gradient_reduction_threshold = gradient_reduction_threshold
 
         self.two_step_pd_large = two_step_pd_large
+        self.two_step_include_large = two_step_include_large
         self.two_step_aggregation = two_step_aggregation
         self.two_step_num_partitions = two_step_num_partitions
         self.two_step_redundancy = two_step_redundancy
@@ -41,6 +44,8 @@ class ComManDo(uc.UnionCom):
         self.prime_dual_verbose_timer = prime_dual_verbose_timer
 
         super().__init__(**kwargs)
+
+        self.construct_sparse = (not self.two_step_include_large)
 
         if self.two_step_num_partitions is not None:
             self.dist_large = []
@@ -173,9 +178,14 @@ class ComManDo(uc.UnionCom):
             for i, j in (
                 (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
             ):
-                W[i][i+j] = F_list[i][j].cpu()
-                if i != j:
-                    W[i+j][i] = torch.t(W[i][i+j])
+                if self.construct_sparse:
+                    W[i][i+j] = F_list[i][j]
+                    if i != j:
+                        W[i+j][i] = W[i][i+j].transpose()
+                else:
+                    W[i][i+j] = F_list[i][j].cpu()
+                    if i != j:
+                        W[i+j][i] = torch.t(W[i][i+j])
 
         print('Applying Coefficients')
         # NOTE: Also includes final W assembly if not compressed
@@ -197,7 +207,10 @@ class ComManDo(uc.UnionCom):
             for i, j in product(*(2 * [range(self.dataset_num)])):
                 coef = coef_func(i, j)
                 W[i][j] *= coef
-            W = torch.from_numpy(np.bmat(W)).float().cpu()
+            if self.construct_sparse:
+                W = sparse.bmat(W)
+            else:
+                W = torch.from_numpy(np.bmat(W)).float().cpu()
 
         print('Computing Laplacian')
         if compressed:
@@ -248,8 +261,13 @@ class ComManDo(uc.UnionCom):
                     dim = F_diag.shape[0]
                     F_diag.view(-1)[::dim + 1] = new_diag[start_idx:start_idx+dim]
                     start_idx += dim
+
+            print('Constructing L')
+            L = self.assemble_matrix(F_list)
+        elif self.construct_sparse:
+            L = sparse.csgraph.laplacian(W)
         else:
-            # Dense calculation of scipy.sparse.csgraph from
+            # Dense calculation of scipy.sparse.csgraph.laplacian from
             # ManiNetCluster
             n_nodes = self.row[0]
             L = -np.asarray(W)
@@ -257,26 +275,25 @@ class ComManDo(uc.UnionCom):
             d = -L.sum(axis=0)
             L.flat[::n_nodes + 1] = d
 
-        if compressed:
-            print('Constructing L')
-            L = self.assemble_matrix(F_list)
-
         print('Calculating eigenvectors')
-        # ASDDF: Find way to calculate in compressed representation
-        # to avoid L construction
-        vals, vecs = linalg.eigh(
-            L,
-            lower=False,
-            overwrite_a=True,
-            # ASDDDF: Add options for user
-            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
-            # Note: Default of 'evx' is only best when taking very few eigenvectors
-            # from a large matrix
-            driver='evx',
-            # ASDDF: Find better way to subset by index
-            # subset_by_index=(0, self.output_dim + 10),
-            subset_by_value=(eps, np.inf),
-        )
+        if self.construct_sparse:
+            vals, vecs = sp_linalg.eigsh(L, k=(L.shape[0] - 1), which='SM')
+        else:
+            # ASDDF: Find way to calculate in compressed representation
+            # to avoid L construction
+            vals, vecs = linalg.eigh(
+                L,
+                lower=False,
+                overwrite_a=True,
+                # ASDDDF: Add options for user
+                # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
+                # Note: Default of 'evx' is only best when taking very few eigenvectors
+                # from a large matrix
+                driver='evx',
+                # ASDDF: Find better way to subset by index
+                # subset_by_index=(0, self.output_dim + 10),
+                subset_by_value=(eps, np.inf),
+            )
 
         # ASDDF: Shorten if eig solution supports filtering
         print('Filtering eigenvectors')
@@ -328,25 +345,29 @@ class ComManDo(uc.UnionCom):
                     # F = torch.block_diag(*F_diag)
 
                     # Second step (Large F)
-                    print('Calculating inter-group F')
-                    i_dist = self.dist_large[i]
-                    j_dist = self.dist_large[j]
+                    if self.two_step_include_large:
+                        print('Calculating inter-group F')
+                        i_dist = self.dist_large[i]
+                        j_dist = self.dist_large[j]
 
-                    # Calculate inter-pseudo F
-                    dist = [i_dist, j_dist]
-                    F_rep = self.Prime_Dual(
-                        dist,
-                        dx=self.col[i],
-                        dy=self.col[j],
-                        epoch_override=self.two_step_pd_large,
-                    )
+                        # Calculate inter-pseudo F
+                        dist = [i_dist, j_dist]
+                        F_rep = self.Prime_Dual(
+                            dist,
+                            dx=self.col[i],
+                            dy=self.col[j],
+                            epoch_override=self.two_step_pd_large,
+                        )
 
-                    # ASDDF: How should this be handled?
-                    use_diagonal = False
-                    if use_diagonal:
-                        for diag, rep_diag in zip(F_diag, F_rep.diag()):
-                            diag += rep_diag
-                    F_rep = F_rep.fill_diagonal_(0)
+                        # ASDDF: How should this be handled?
+                        use_diagonal = False
+                        if use_diagonal:
+                            for diag, rep_diag in zip(F_diag, F_rep.diag()):
+                                diag += rep_diag
+                        F_rep = F_rep.fill_diagonal_(0)
+
+                    else:
+                        F_rep = None
 
                     # ASDDF: Store only upper triangular (?)
                     # ASDF: Apply scaling factors for K_x ~= FK_yF^t compatibility
@@ -692,18 +713,19 @@ class ComManDo(uc.UnionCom):
                     )
 
                 # Inter-group distances
-                agg_intra = normalize(self.sparse_transform).transpose() * self.dataset[i]
-                agg_intra = distance_function(agg_intra)
-                self.dist_large.append(
-                    torch.from_numpy(agg_intra).float().to(self.device)
-                )
+                if self.two_step_include_large:
+                    agg_intra = normalize(self.sparse_transform).transpose() * self.dataset[i]
+                    agg_intra = distance_function(agg_intra)
+                    self.dist_large.append(
+                        torch.from_numpy(agg_intra).float().to(self.device)
+                    )
             else:
                 distances = distance_function(self.dataset[i])
                 self.dist.append(torch.from_numpy(distances).float().to(self.device))
 
     def compressed_to_dense(self, F_list):
         """
-        Convert compressed F_list to dense representation
+        Convert compressed F_list to single partition representation
         (equivalent to ``self.two_step_num_partitions`` None)
 
         Output
@@ -712,8 +734,12 @@ class ComManDo(uc.UnionCom):
         """
         for i, j in ((i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)):
             F_diag, F_rep = F_list[i][j]
-            dense = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
-            F_list[i][j] = dense.cpu()
+            if self.construct_sparse:
+                # ASDDF: GPU fixes
+                F_list[i][j] = sparse.block_diag(F_diag, format='csr')
+            else:
+                dense = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
+                F_list[i][j] = dense.cpu()
         return F_list
 
     def assemble_matrix(self, F_list):
@@ -727,11 +753,21 @@ class ComManDo(uc.UnionCom):
         W = [[None for j in range(self.dataset_num)] for i in range(self.dataset_num)]
         for i, j in ((i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)):
             F_diag, F_rep = F_list[i][j]
-            W[i][i+j] = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
-            W[i][i+j] = W[i][i+j].cpu()
-            if i != j:
-                W[i+j][i] = torch.t(W[i][i+j])
-        return torch.from_numpy(np.bmat(W)).float().cpu()
+            if self.construct_sparse:
+                # ASDDF: GPU fixes
+                W[i][i+j] = sparse.block_diag(F_diag)
+                if i != j:
+                    W[i+j][i] = W[i][i+j].transpose()
+            else:
+                W[i][i+j] = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
+                W[i][i+j] = W[i][i+j].cpu()
+                if i != j:
+                    W[i+j][i] = torch.t(W[i][i+j])
+
+        if self.construct_sparse:
+            return sparse.bmat(W)
+        else:
+            return torch.from_numpy(np.bmat(W)).float().cpu()
 
     def expand_matrix(self, m):
         """Helper function to cast two_step large matrix to its final size"""
