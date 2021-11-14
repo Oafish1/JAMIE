@@ -62,12 +62,14 @@ class time_logger():
 
 def visualize_mapping(mapping, primary=0):
     """Visualize a mapping given as (*mappings) using PCA, first mapping is the primary one"""
+    assert len(mapping) == 2, 'Currently, ``visualize_mapping`` only supports 2 mappings'
+
     pca = PCA(n_components=2)
     pca.fit(mapping[primary])
     for i, m in enumerate(mapping):
         m_pca = pca.transform(m)
         label = f'Mapping {i+1}'
-        if i == 0:
+        if i == primary:
             s, c = 20, 'orange'
         else:
             s, c = 2, 'blue'

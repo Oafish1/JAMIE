@@ -284,6 +284,8 @@ class ComManDo(uc.UnionCom):
                 # ASDF: Replace this
                 k=min((L.shape[0] - 1), 3*self.output_dim),
                 which='SM',
+                # ASDDDF: Make configurable
+                tol=1e-4,
             )
         else:
             # ASDDF: Find way to calculate in compressed representation
