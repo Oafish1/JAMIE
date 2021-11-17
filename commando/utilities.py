@@ -69,6 +69,7 @@ def visualize_mapping(mapping, primary=0):
     for i, m in enumerate(mapping):
         m_pca = pca.transform(m)
         label = f'Mapping {i+1}'
+        # ASDF: Make primary show first
         if i == primary:
             s, c = 20, 'orange'
         else:

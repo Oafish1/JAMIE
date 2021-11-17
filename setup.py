@@ -12,10 +12,11 @@ setup(
     version=__version__,
     packages=find_packages(exclude=('tests')),
     install_requires=[
-        # Unioncom
+        'anndata',
         'matplotlib',
         'numpy',
         'scikit-learn-extra',
+        'scanpy',
         'scipy',
         'sklearn',
         'torch',
@@ -33,7 +34,6 @@ setup(
             'pytest-cov',
         ],
         'notebooks': [
-            'anndata',
             'jupyterlab',
             'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD',
             'pandas',

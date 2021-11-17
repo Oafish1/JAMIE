@@ -2,6 +2,7 @@ from itertools import product
 import time
 import warnings
 
+import anndata as ad
 import numpy as np
 from scipy import linalg, sparse, stats
 from scipy.sparse import linalg as sp_linalg
@@ -22,6 +23,7 @@ class ComManDo(uc.UnionCom):
         gradient_reduction_threshold=.99,
         prime_dual_verbose_timer=False,
         two_step_aggregation='random',
+        two_step_aggregation_kwargs=None,
         two_step_log_pd=None,
         two_step_num_partitions=None,
         two_step_redundancy=1,
@@ -38,6 +40,7 @@ class ComManDo(uc.UnionCom):
         self.two_step_pd_large = two_step_pd_large
         self.two_step_include_large = two_step_include_large
         self.two_step_aggregation = two_step_aggregation
+        self.two_step_aggregation_kwargs = two_step_aggregation_kwargs
         self.two_step_num_partitions = two_step_num_partitions
         self.two_step_redundancy = two_step_redundancy
 
@@ -47,9 +50,17 @@ class ComManDo(uc.UnionCom):
 
         self.construct_sparse = (not self.two_step_include_large)
 
-        if self.two_step_num_partitions is not None:
+        self.two_step = (
+            self.two_step_num_partitions is not None
+            or two_step_aggregation in ['cell_cycle']
+        )
+        if self.two_step:
             self.dist_large = []
-        if two_step_log_pd is None and self.two_step_num_partitions is not None:
+        if (
+            two_step_log_pd is None
+            and self.two_step
+            and self.two_step_aggregation not in ['cell_cycle']
+        ):
             self.two_step_log_pd = max(1, int(self.two_step_num_partitions / 10))
         else:
             self.two_step_log_pd = two_step_log_pd
@@ -85,15 +96,23 @@ class ComManDo(uc.UnionCom):
         time1 = time.time()
         init_random_seed(self.manual_seed)
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+        # Test for dataset type (must all be the same)
         self.dataset = dataset
+        self.dataset_annotation = None
+        if isinstance(dataset[0], ad._core.anndata.AnnData):
+            self.dataset = [d.X for d in self.dataset]
+            self.dataset_annotation = dataset
+
         self.dataset_num = len(self.dataset)
         for i in range(self.dataset_num):
             self.row.append(np.shape(self.dataset[i])[0])
             self.col.append(np.shape(self.dataset[i])[1])
+
         if self.project_mode == 'nlma' and not (np.array(self.row) == self.row[0]).all():
             raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
-        if self.two_step_num_partitions is None or self.two_step_redundancy == 1:
+        if (not self.two_step) or self.two_step_redundancy == 1:
             # Create groupings (two-step)
             self.generate_group_idx()
 
@@ -106,11 +125,11 @@ class ComManDo(uc.UnionCom):
             #  Project to common embedding
             integrated_data = self.project_nlma(
                 match_result,
-                compressed=(self.two_step_num_partitions is not None)
+                compressed=(self.two_step)
             )
 
             # Unsort data
-            if self.two_step_num_partitions is not None:
+            if self.two_step:
                 integrated_data = tuple(
                     integrated_data[i][self.idx_all_inv]
                     for i in range(self.dataset_num)
@@ -335,7 +354,7 @@ class ComManDo(uc.UnionCom):
             for j in range(i, self.dataset_num):
                 print('-' * 33)
                 print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
-                if self.two_step_num_partitions is not None:
+                if self.two_step:
                     # First step (small F)
                     F_diag = []
                     for k, (i_dist, j_dist) in enumerate(zip(self.dist[i], self.dist[j])):
@@ -571,7 +590,7 @@ class ComManDo(uc.UnionCom):
 
     def generate_group_idx(self):
         """Helper function to generate/refresh group idx"""
-        if self.two_step_num_partitions is not None:
+        if self.two_step:
             if self.two_step_num_partitions == 1:
                 warnings.warn('``two_step_num_partitions`` = 1 can lead to unexpected behavior.')
             if self.two_step_redundancy < 1:
@@ -591,7 +610,7 @@ class ComManDo(uc.UnionCom):
             We have group indexes [[3,2],[0,1]]
             ``idx_all``
             [3,2,0,1]
-            ``idx_all_inv``
+            ``idx_all_inv`` (automatic)
             [2,3,1,0]
             ``idx_groups``
             [[3,2],[0,1]]
@@ -599,19 +618,56 @@ class ComManDo(uc.UnionCom):
             [[0,1],[2,3]]
             """
             # Assumes datasets are of the same size (NLMA)
-            self.idx_all = np.arange(self.row[0])
-
-            # ASDDF: Add more methods
             if self.two_step_aggregation == 'random':
                 # Random sampling will generally lead to similar means,
                 # potentially leading to large F collapse
+                self.idx_all = np.arange(self.row[0])
                 np.random.shuffle(self.idx_all)
                 self.idx_groups = np.array_split(self.idx_all, self.two_step_num_partitions)
                 self.idx_sorted_groups = np.array_split(
                     np.arange(self.row[0]),
                     self.two_step_num_partitions,
                 )
-                self.idx_all_inv = np.argsort(self.idx_all)
+
+            elif self.two_step_aggregation == 'cell_cycle':
+                """
+                Takes additional ``two_step_aggregation_kwargs``
+                ['s_genes', 'g2m_genes']
+                """
+                assert self.dataset_annotation is not None, \
+                    'Datasets must be given as type ``AnnData``.'
+                assert all(
+                    k in self.two_step_aggregation_kwargs
+                    for k in ['s_genes', 'g2m_genes']
+                ), (
+                    "['s_genes', 'g2m_genes'] must be provided in "
+                    "``two_step_aggregation_kwargs`` for use in "
+                    "two_step_aggregation: 'cell_cycle'"
+                )
+
+                from scanpy.tl import score_genes_cell_cycle
+
+                score_genes_cell_cycle(
+                    self.dataset_annotation[0],
+                    self.two_step_aggregation_kwargs['s_genes'],
+                    self.two_step_aggregation_kwargs['g2m_genes'],
+                    copy=False,
+                )
+
+                phase = np.array(self.dataset_annotation[0].obs['phase'])
+                self.idx_all = np.argsort(phase)
+                self.idx_groups = [
+                    np.arange(self.row[1])[phase == p]
+                    for p in np.unique(phase)
+                ]
+                self.idx_sorted_groups = [
+                    np.arange(self.row[1])[np.sort(phase) == p]
+                    for p in np.unique(phase)
+                ]
+
+                self.two_step_num_partitions = len(np.unique(phase))
+                if self.two_step_log_pd is None:
+                    self.two_step_log_pd = self.two_step_num_partitions
 
             elif self.two_step_aggregation == 'kmed':
                 if self.two_step_redundancy < 1:
@@ -632,9 +688,8 @@ class ComManDo(uc.UnionCom):
                 ).fit(self.dataset[0])
                 labels = cluster.labels_
                 self.idx_all = np.argsort(labels)
-                self.idx_all_inv = np.argsort(self.idx_all)
                 self.idx_groups = [
-                    np.arange(self.row[1])[labels == i]
+                    np.arange(self.row[0])[labels == i]
                     for i in range(self.two_step_num_partitions)
                 ]
                 running_idx = []
@@ -649,6 +704,9 @@ class ComManDo(uc.UnionCom):
                     '``two_step_aggregation`` type '
                     f"'{self.two_step_aggregation}' not found"
                 )
+
+            # Auto-calculated
+            self.idx_all_inv = np.argsort(self.idx_all)
 
             # Print group sizes (for skew debugging)
             print('Two-Step group sizes')
@@ -711,7 +769,7 @@ class ComManDo(uc.UnionCom):
                 def distance_function(df):
                     return pairwise_distances(df, metric=self.distance_mode)
 
-            if (self.two_step_num_partitions is not None):
+            if self.two_step:
                 # TODO: Add non-average aggregation methods
                 # Intra-group distances
                 self.dist.append([])
