@@ -9,4 +9,4 @@
 Through random aggregation of cell data, gradients can be computed faster and cast back out to the original data sources, allowing for a generated `F` matrix with no lost resolution while cutting computation time.  With this method, however, criterion for convergence becomes more strict.
 
 ### Two-Step Aggregation
-Cells are grouped into pseudocells.  Inter and intra-psuedocell `F` matrices are calculated, resulting in much faster (~20x) computation time and much less memory usage.  Currently, the whole matrix needs to be reconstructed before calculating eigenvectors, however, only delaying the memory requirement.
+Cells are grouped into pseudocells.  Inter and intra-psuedocell `F` matrices are calculated, resulting in much faster (~20x) computation time and much less memory usage.  Currently, the whole matrix needs to be reconstructed before calculating eigenvectors, however, only delaying the memory requirement.  Additionally, the bulk of computation time is taken up by eigenvector calculation.

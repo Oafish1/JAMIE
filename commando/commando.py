@@ -21,6 +21,8 @@ class ComManDo(uc.UnionCom):
         self,
         gradient_reduction=None,
         gradient_reduction_threshold=.99,
+        preprocessing=None,
+        preprocessing_kwargs=None,
         prime_dual_verbose_timer=False,
         two_step_aggregation='random',
         two_step_aggregation_kwargs=None,
@@ -34,13 +36,23 @@ class ComManDo(uc.UnionCom):
         if 'project_mode' not in kwargs:
             kwargs['project_mode'] = 'nlma'
 
+        # Speed up gradient computation at the cost of convergence guarantees
         self.gradient_reduction = gradient_reduction
         self.gradient_reduction_threshold = gradient_reduction_threshold
 
+        # Perform data preprocessing
+        self.preprocessing = preprocessing
+        self.preprocessing_kwargs = preprocessing_kwargs
+
+        # How to handle pseudo-cells
         self.two_step_pd_large = two_step_pd_large
         self.two_step_include_large = two_step_include_large
+
+        # How to handle aggregation for two-step
         self.two_step_aggregation = two_step_aggregation
         self.two_step_aggregation_kwargs = two_step_aggregation_kwargs
+
+        # How to do two-step
         self.two_step_num_partitions = two_step_num_partitions
         self.two_step_redundancy = two_step_redundancy
 
@@ -112,6 +124,10 @@ class ComManDo(uc.UnionCom):
         if self.project_mode == 'nlma' and not (np.array(self.row) == self.row[0]).all():
             raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
+        # Perform preprocessing
+        self.preprocess()
+
+        # Main calculation
         if (not self.two_step) or self.two_step_redundancy == 1:
             # Create groupings (two-step)
             self.generate_group_idx()
@@ -588,6 +604,24 @@ class ComManDo(uc.UnionCom):
 
         return F
 
+    def preprocess(self):
+        """Preprocessing helper function"""
+        if self.preprocessing is None:
+            return
+
+        for i in range(self.dataset_num):
+            if self.preprocessing == 'pca':
+                # ASDF: Implement
+                raise Exception(
+                    f'Preprocessing method {self.preprocessing} not implemented.'
+                )
+            else:
+                raise Exception(
+                    f'Preprocessing method {self.preprocessing} not found.'
+                )
+        self.data
+        self.col
+
     def generate_group_idx(self):
         """Helper function to generate/refresh group idx"""
         if self.two_step:
@@ -636,21 +670,27 @@ class ComManDo(uc.UnionCom):
                 """
                 assert self.dataset_annotation is not None, \
                     'Datasets must be given as type ``AnnData``.'
-                assert all(
-                    k in self.two_step_aggregation_kwargs
-                    for k in ['s_genes', 'g2m_genes']
-                ), (
-                    "['s_genes', 'g2m_genes'] must be provided in "
-                    "``two_step_aggregation_kwargs`` for use in "
-                    "two_step_aggregation: 'cell_cycle'"
-                )
+
+                if (
+                    self.two_step_aggregation_kwargs is None
+                    or not all(
+                        k in self.two_step_aggregation_kwargs
+                        for k in ['s_genes', 'g2m_genes']
+                    )
+                ):
+                    from .resources import S_GENES, G2M_GENES
+                    s_genes, g2m_genes = S_GENES, G2M_GENES
+
+                else:
+                    s_genes = self.two_step_aggregation_kwargs['s_genes']
+                    g2m_genes = self.two_step_aggregation_kwargs['g2m_genes']
 
                 from scanpy.tl import score_genes_cell_cycle
 
                 score_genes_cell_cycle(
                     self.dataset_annotation[0],
-                    self.two_step_aggregation_kwargs['s_genes'],
-                    self.two_step_aggregation_kwargs['g2m_genes'],
+                    s_genes,
+                    g2m_genes,
                     copy=False,
                 )
 
@@ -722,7 +762,7 @@ class ComManDo(uc.UnionCom):
                 self.rep_transform[idx, k] = 1
             self.sparse_transform = sparse.csr_matrix(self.rep_transform.cpu())
 
-            # Sort dataset
+            # Sort datasets
             for i in range(self.dataset_num):
                 self.dataset[i] = self.dataset[i][self.idx_all]
 
