@@ -842,7 +842,7 @@ class ComManDo(uc.UnionCom):
         for i, j in ((i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)):
             F_diag, F_rep = F_list[i][j]
             if self.construct_sparse:
-                # ASDDF: GPU fixes
+                F_diag = [m.cpu() for m in F_diag]
                 F_list[i][j] = sparse.block_diag(F_diag, format='csr')
             else:
                 dense = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
@@ -861,7 +861,7 @@ class ComManDo(uc.UnionCom):
         for i, j in ((i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)):
             F_diag, F_rep = F_list[i][j]
             if self.construct_sparse:
-                # ASDDF: GPU fixes
+                F_diag = [m.cpu() for m in F_diag]
                 W[i][i+j] = sparse.block_diag(F_diag)
                 if i != j:
                     W[i+j][i] = W[i][i+j].transpose()
