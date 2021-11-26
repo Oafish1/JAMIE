@@ -238,7 +238,11 @@ class ComManDo(uc.UnionCom):
                         coef * F_diag_component
                         for F_diag_component in F_list[i][j][0]
                     ],
-                    coef * F_list[i][j][1]
+                    (
+                        coef * F_list[i][j][1]
+                        if F_list[i][j][1] is not None
+                        else None
+                    ),
                 )
         else:
             for i, j in product(*(2 * [range(self.dataset_num)])):
@@ -263,7 +267,10 @@ class ComManDo(uc.UnionCom):
                 (i, j) for i in range(self.dataset_num) for j in range(self.dataset_num-i)
             ):
                 F_diag, F_rep = F_list[i][j]
-                for mat in (*F_diag, F_rep):
+                mat_collection = (*F_diag,)
+                if F_rep is not None:
+                    mat_collection += (F_rep,)
+                for mat in mat_collection:
                     mat *= -1
 
             # Get degrees
@@ -273,7 +280,11 @@ class ComManDo(uc.UnionCom):
                 output = upper_triangle_block[j][i-j]
                 return (
                     [torch.t(mat) for mat in output[0]],
-                    torch.t(output[1])
+                    (
+                        torch.t(output[1])
+                        if output[1] is not None
+                        else None
+                    ),
                 )
 
             new_diag = []
@@ -281,11 +292,14 @@ class ComManDo(uc.UnionCom):
                 running_col_sum = torch.zeros(self.row[0]).float().to(self.device)
                 for row in range(self.dataset_num):
                     F_diag, F_rep = get(F_list, row, col)
-                    rep_col_sum = torch.sum(F_rep, 0)
-                    total_col_sum = [
-                        rep + torch.sum(mat, 0)
-                        for mat, rep in zip(F_diag, rep_col_sum)
-                    ]
+                    if F_rep is not None:
+                        rep_col_sum = torch.sum(F_rep, 0)
+                        total_col_sum = [
+                            rep + torch.sum(mat, 0)
+                            for mat, rep in zip(F_diag, rep_col_sum)
+                        ]
+                    else:
+                        total_col_sum = [torch.sum(mat, 0) for mat in F_diag]
                     running_col_sum += torch.cat(total_col_sum)
                 running_col_sum *= -1
                 new_diag.append(running_col_sum)
@@ -403,7 +417,7 @@ class ComManDo(uc.UnionCom):
                             epoch_override=self.two_step_pd_large,
                         )
 
-                        # ASDDF: How should this be handled?
+                        # ASDF: F matrix additions revision
                         use_diagonal = False
                         if use_diagonal:
                             for diag, rep_diag in zip(F_diag, F_rep.diag()):
@@ -588,15 +602,15 @@ class ComManDo(uc.UnionCom):
                         / torch.trace(torch.mm(Kx, Kx))
                     )
 
-            if verbose and (i+1) % self.log_pd == 0:
+            if verbose and i % self.log_pd == 0:
                 if self.integration_type == "MultiOmics":
                     norm2 = torch.norm(a*Kx - torch.mm(torch.mm(F, Ky), torch.t(F)))
                     print("epoch:[{:d}/{:d}] err:{:.4f} alpha:{:.4f}"
-                          .format(i+1, epochs, norm2.data.item(), a))
+                          .format(i, epochs, norm2.data.item(), a))
                 else:
                     norm2 = torch.norm(dist*F)
                     print("epoch:[{:d}/{:d}] err:{:.4f}"
-                          .format(i+1, epochs, norm2.data.item()))
+                          .format(i, epochs, norm2.data.item()))
             timer.log('Delay and CLI')
 
         if self.prime_dual_verbose_timer:
@@ -631,6 +645,12 @@ class ComManDo(uc.UnionCom):
                 raise Exception(
                     f'two_step_redundancy: {self.two_step_redundancy} is not supported'
                 )
+            if self.two_step_aggregation in ['kmed', 'cell_cycle']:
+                if self.two_step_redundancy > 1:
+                    raise Exception(
+                        f'two_step_redundancy: {self.two_step_redundancy} > 1 is not supported '
+                        f'for two_step_aggregation: {self.two_step_aggregation}.'
+                    )
 
             """
             Each method modifies a few vars
@@ -687,6 +707,7 @@ class ComManDo(uc.UnionCom):
 
                 from scanpy.tl import score_genes_cell_cycle
 
+                # ASDDF: Add support for second, third, datasets
                 score_genes_cell_cycle(
                     self.dataset_annotation[0],
                     s_genes,
@@ -705,17 +726,12 @@ class ComManDo(uc.UnionCom):
                     for p in np.unique(phase)
                 ]
 
+                # ASDDF: Add support for sub-groups
                 self.two_step_num_partitions = len(np.unique(phase))
                 if self.two_step_log_pd is None:
                     self.two_step_log_pd = self.two_step_num_partitions
 
             elif self.two_step_aggregation == 'kmed':
-                if self.two_step_redundancy < 1:
-                    raise Exception(
-                        f'two_step_redundancy: {self.two_step_redundancy} > 1 is not supported '
-                        f'for two_step_aggregation: {self.two_step_aggregation}.'
-                    )
-
                 from sklearn_extra.cluster import KMedoids
 
                 # ASDDF: Take both datasets into account
@@ -759,7 +775,7 @@ class ComManDo(uc.UnionCom):
                 .float().to(self.device)
             )
             for k, idx in enumerate(self.idx_groups):
-                self.rep_transform[idx, k] = 1
+                self.rep_transform[idx, k] = 1 / len(idx)
             self.sparse_transform = sparse.csr_matrix(self.rep_transform.cpu())
 
             # Sort datasets
@@ -845,6 +861,7 @@ class ComManDo(uc.UnionCom):
                 F_diag = [m.cpu() for m in F_diag]
                 F_list[i][j] = sparse.block_diag(F_diag, format='csr')
             else:
+                # ASDF: F matrix additions revision
                 dense = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
                 F_list[i][j] = dense.cpu()
         return F_list
@@ -866,6 +883,7 @@ class ComManDo(uc.UnionCom):
                 if i != j:
                     W[i+j][i] = W[i][i+j].transpose()
             else:
+                # ASDF: F matrix additions revision
                 W[i][i+j] = torch.block_diag(*F_diag) + self.expand_matrix(F_rep)
                 W[i][i+j] = W[i][i+j].cpu()
                 if i != j:
