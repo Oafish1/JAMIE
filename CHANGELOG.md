@@ -1,6 +1,10 @@
+# 2.0.4
+- Cleanup, notes, file removal
+
 # 2.0.3
 - CPU fixes
 - Large matrix exclusion fixes
+- Expand/shrink matrix normalization
 - Reruns
 - Notes on coefficient/F-combination difficulties
 

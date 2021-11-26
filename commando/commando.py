@@ -775,6 +775,7 @@ class ComManDo(uc.UnionCom):
                 .float().to(self.device)
             )
             for k, idx in enumerate(self.idx_groups):
+                # ASDDF: Re-evaluate normalization
                 self.rep_transform[idx, k] = 1 / len(idx)
             self.sparse_transform = sparse.csr_matrix(self.rep_transform.cpu())
 
