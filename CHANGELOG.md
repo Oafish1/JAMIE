@@ -1,3 +1,6 @@
+# 2.0.5
+- Small `construct_sparse` fix
+
 # 2.0.4
 - Cleanup, notes, file removal
 

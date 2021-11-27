@@ -60,8 +60,6 @@ class ComManDo(uc.UnionCom):
 
         super().__init__(**kwargs)
 
-        self.construct_sparse = (not self.two_step_include_large)
-
         self.two_step = (
             self.two_step_num_partitions is not None
             or two_step_aggregation in ['cell_cycle']
@@ -76,6 +74,8 @@ class ComManDo(uc.UnionCom):
             self.two_step_log_pd = max(1, int(self.two_step_num_partitions / 10))
         else:
             self.two_step_log_pd = two_step_log_pd
+
+        self.construct_sparse = self.two_step and not self.two_step_include_large
 
     def fit_transform(self, dataset=None):
         """Fit function with ``nlma`` added"""
