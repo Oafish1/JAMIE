@@ -17,7 +17,7 @@ class time_logger():
     """Class made for easy logging with toggleable verbosity"""
     def __init__(
         self,
-        discard_first_sample=True,
+        discard_first_sample=False,
         record=True,
         verbose=False,
     ):

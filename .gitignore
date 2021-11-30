@@ -113,9 +113,10 @@ ENV/
 .LSOverride
 
 # Data
-examples/**/*.csv
+# examples/**/*.csv
 examples/**/*.h5ad
-examples/**/*.xlsx
+# examples/**/*.xlsx
+examples/**/*.tsv
 
 # Lightning
 lightning_logs/

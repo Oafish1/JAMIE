@@ -1,3 +1,7 @@
+# 2.1.0
+- Remove two-step, gradient optimizations temporarily
+- Comparison notebook
+
 # 2.0.5
 - Small `construct_sparse` fix
 
