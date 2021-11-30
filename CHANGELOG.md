@@ -2,6 +2,7 @@
 - Remove two-step, gradient optimizations temporarily
 - Comparison notebook
 - Fix NLMA scaling (coefficient fixes)
+- Re-added `tsne` projection method
 
 # 2.0.5
 - Small `construct_sparse` fix

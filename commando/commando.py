@@ -3,7 +3,7 @@ import warnings
 
 import anndata as ad
 import numpy as np
-from scipy import linalg, stats
+from scipy import stats
 from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
@@ -117,6 +117,13 @@ class ComManDo(uc.UnionCom):
                 else:
                     mat = match_result[k]
                     k += 1
+
+                    # # KNN
+                    # knn = 5
+                    # mat.flat[::self.row[0]+1] = 0
+                    # mat_sort = np.sort(mat, axis=0)[-knn]
+                    # mat = (mat >= mat_sort).astype(np.float32)
+
                 match_matrix[i][j] = mat
 
             integrated_data = self.project_nlma(match_matrix)
