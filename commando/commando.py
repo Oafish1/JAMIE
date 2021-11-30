@@ -1,4 +1,5 @@
 from itertools import product
+import warnings
 
 import anndata as ad
 import numpy as np
@@ -109,7 +110,8 @@ class ComManDo(uc.UnionCom):
             k = 0
             for i, j in product(*(2 * [range(self.dataset_num)])):
                 if i == j:
-                    mat, _ = stats.spearmanr(self.dataset[i], axis=1)
+                    # mat, _ = stats.spearmanr(self.dataset[i], axis=1)
+                    mat = np.eye(self.row[0])
                 elif i > j:
                     mat = match_matrix[j][i].T
                 else:
@@ -125,71 +127,6 @@ class ComManDo(uc.UnionCom):
         time.aggregate()
 
         return integrated_data
-
-    def project_nlma(self, W, compressed=False):
-        """
-        Projects using `F` matrices as correspondence using NLMA, heavily
-        relies on methodology and code from
-        https://github.com/daifengwanglab/ManiNetCluster
-        """
-        print('-' * 33)
-        print('Performing NLMA')
-        mu = .9
-        eps = 1e-8
-        vec_func = None
-
-        print('Applying Coefficients')
-        coef_func = lambda a, b: mu if a == b else 1 - mu
-        for i, j in (
-            (i, j) for i in range(self.dataset_num) for j in range(i, self.dataset_num)
-        ):
-            # NOTE: Assumes that transposes are the same array in memory
-            coef = coef_func(i, j)
-            W[i][j] *= coef
-        W = torch.from_numpy(np.bmat(W)).float()
-        print(W)
-
-        print('Computing Laplacian')
-        # Dense calculation of scipy.sparse.csgraph.laplacian from
-        # ManiNetCluster
-        n_nodes = self.row[0]
-        L = -np.asarray(W)
-        L.flat[::n_nodes + 1] = 0
-        d = -L.sum(axis=0)
-        L.flat[::n_nodes + 1] = d
-
-        print('Calculating eigenvectors')
-        vals, vecs = linalg.eigh(
-            L,
-            lower=False,
-            overwrite_a=True,
-            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
-            # Note: Default of 'evx' is only best when taking very few eigenvectors
-            # from a large matrix
-            driver='evx',
-            subset_by_value=(eps, np.inf),
-        )
-
-        idx = np.argsort(vals)
-        for i in range(len(idx)):
-            if vals[idx[i]] >= eps:
-                break
-        vecs = vecs.real[:, idx[i:]]
-        if vec_func:
-            vecs = vec_func(vecs)
-
-        for i in range(vecs.shape[1]):
-            vecs[:, i] /= np.linalg.norm(vecs[:, i])
-
-        print('Perfoming mapping')
-        maps = []
-        min_idx = 0
-        for dx in self.row:
-            map = vecs[min_idx:min_idx + dx, :self.output_dim]
-            maps.append(map)
-            min_idx += dx
-
-        return tuple(maps)
 
     def match(self):
         """Find correspondence between multi-omics datasets"""
@@ -223,14 +160,13 @@ class ComManDo(uc.UnionCom):
         dy=None,
         verbose=True,
     ):
-        """Prime dual combined with Adam algorithm to find the local optimal soluation"""
+        """Prime dual combined with Adam algorithm to find the local optimal solution"""
         Kx = dist[0]
         Ky = dist[1]
 
         # Escape for 1x1 data
         if Kx.shape == (1, 1) and Ky.shape == (1, 1):
-            if verbose:
-                print('1x1 distance matrix, escaping...')
+            warnings.warn('1x1 distance matrix, escaping...')
             return torch.ones((1, 1)).float().to(self.device)
 
         N = np.int(np.maximum(Kx.shape[0], Ky.shape[0]))
@@ -318,6 +254,72 @@ class ComManDo(uc.UnionCom):
                           .format(i, self.epoch_pd, norm2.data.item()))
 
         return F.cpu().detach().numpy()
+
+    def project_nlma(self, W, compressed=False):
+        """
+        Projects using `F` matrices as correspondence using NLMA, heavily
+        relies on methodology and code from
+        https://github.com/daifengwanglab/ManiNetCluster
+        """
+        print('-' * 33)
+        print('Performing NLMA')
+        mu = .9
+        eps = 1e-8
+        vec_func = None
+
+        print('Applying Coefficients')
+        diag_sum = sum(W[i][i] for i in range(self.dataset_num))
+        for i, j in (
+            (i, j) for i in range(self.dataset_num) for j in range(i+1, self.dataset_num)
+        ):
+            # NOTE: Assumes that transposes are the same array in memory
+            W[i][j] = mu * diag_sum / (self.dataset_num * W[i][j].sum()) * W[i][j]
+        W = np.asarray(np.bmat(W))
+        # print(W)
+
+        print('Computing Laplacian')
+        # Dense calculation of scipy.sparse.csgraph.laplacian from
+        # ManiNetCluster
+        n_nodes = self.row[0]
+        L = -W
+        L.flat[::n_nodes + 1] = 0
+        d = -L.sum(axis=0)
+        L.flat[::n_nodes + 1] = d
+
+        print('Calculating eigenvectors')
+        # vals, vecs = linalg.eigh(
+        #     L,
+        #     lower=False,
+        #     overwrite_a=True,
+        #     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
+        #     # Note: Default of 'evx' is only best when taking very few eigenvectors
+        #     # from a large matrix
+        #     driver='evx',
+        #     subset_by_value=(eps, np.inf),
+        # )
+        vals, vecs = np.linalg.eig(L)
+
+        idx = np.argsort(vals)
+        for i in range(len(idx)):
+            if vals[idx[i]] >= eps:
+                break
+        # print(vals[idx[i:]])
+        vecs = vecs.real[:, idx[i:]]
+        if vec_func:
+            vecs = vec_func(vecs)
+
+        for i in range(vecs.shape[1]):
+            vecs[:, i] /= np.linalg.norm(vecs[:, i])
+
+        print('Perfoming mapping')
+        maps = ()
+        min_idx = 0
+        for dx in self.row:
+            map = vecs[min_idx:min_idx + dx, :self.output_dim]
+            maps += (map,)
+            min_idx += dx
+
+        return maps
 
     def compute_distances(self):
         """Helper function to compute distances for each dataset"""

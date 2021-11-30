@@ -1,6 +1,7 @@
 # 2.1.0
 - Remove two-step, gradient optimizations temporarily
 - Comparison notebook
+- Fix NLMA scaling (coefficient fixes)
 
 # 2.0.5
 - Small `construct_sparse` fix
