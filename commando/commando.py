@@ -295,51 +295,81 @@ class ComManDo(uc.UnionCom):
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
-            for step in range(len_dataloader):
-                primes = []
-                # Assumes aligned datasets
+            # ALL FIRST
+            primes = []
+            loss = 0
+            # Assumes aligned datasets
+            for i in range(self.dataset_num):
+                primes.append(net(self.dataset[i], i))
+            timer.log('Get samples')
+            # ALL FIRST MODIFICATION
+            # gF = torch.t(torch.mm(torch.t(primes[1]), torch.t(Wxy)))
+            # timer.log('gF calculation')
+
+            for batch_idx in range(len_dataloader):
+                # ALL FIRST
                 random_batch = np.random.randint(0, self.row[0], self.batch_size)
-                for i in range(self.dataset_num):
-                    data = self.dataset[i][random_batch]
-                    primes.append(net(data, i))
+                primes_s = [p[random_batch] for p in primes]
                 Wx_s = Wx[random_batch][:, random_batch]
                 Wy_s = Wy[random_batch][:, random_batch]
                 Wxy_s = Wxy[random_batch][:, random_batch]
-                timer.log('Get samples')
+                # ALL FIRST MODIFICATION
+                # gF_s = gF[random_batch]
+                timer.log('Get subset samples')
 
-                loss = 0
-                # ASDF: optimize
-                # fg
-                # The transpose on Wxy doesn't seem necessary due to symmetry
-                # gF_s = torch.t(torch.mm(torch.t(primes[1]), torch.t(Wxy_s)))
-                prime_full_gF = net(self.dataset[1], 1)
-                gF = torch.t(torch.mm(torch.t(prime_full_gF), torch.t(Wxy)))
-                gF_s = gF[random_batch]
-                timer.log('Loop precalculation')
+                # BATCH FIRST
+                # primes_s = []
+                # loss = 0
+                # # Assumes aligned datasets
+                # random_batch = np.random.randint(0, self.row[0], self.batch_size)
+                # for i in range(self.dataset_num):
+                #     data = self.dataset[i][random_batch]
+                #     primes_s.append(net(data, i))
+                # Wx_s = Wx[random_batch][:, random_batch]
+                # Wy_s = Wy[random_batch][:, random_batch]
+                # Wxy_s = Wxy[random_batch][:, random_batch]
+                # timer.log('Get subset samples')
+
+                # BATCH FIRST MODIFICATION
+                # # ASDF: optimize
+                # gF_s = torch.t(torch.mm(torch.t(primes_s[1]), torch.t(Wxy_s)))
+                # prime_full_gF = net(self.dataset[1], 1)
+                # gF = torch.t(torch.mm(torch.t(prime_full_gF), torch.t(Wxy)))
+                # gF_s = gF[random_batch]
+                # timer.log('gF_s calculation')
+
+                # Error calculation
                 for i, j in product(*(2 * [range(self.batch_size)])):
                     # fg
-                    norm = primes[0][i] - gF_s[j]
-                    # norm = primes[0][i] - primes[1][j]
+                    # norm = primes[0][i] - gF_s[j]
+                    norm = primes_s[0][i] - primes_s[1][j]
                     norm = torch.linalg.norm(norm)**2
                     loss += norm * Wxy_s[i, j] * (1 - mu)
                     timer.log('FG')
 
                     # ff
-                    norm = primes[0][i] - primes[0][j]
+                    norm = primes_s[0][i] - primes_s[0][j]
                     norm = torch.linalg.norm(norm)**2
                     loss += norm * Wx_s[i, j] * mu
                     timer.log('FF')
 
                     # gg
-                    norm = primes[1][i] - primes[1][j]
+                    norm = primes_s[1][i] - primes_s[1][j]
                     norm = torch.linalg.norm(norm)**2
                     loss += norm * Wy_s[i, j] * mu
                     timer.log('GG')
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                timer.log('FG')
+                # # BATCH FIRST
+                # optimizer.zero_grad()
+                # loss.backward()
+                # optimizer.step()
+                # timer.log('Step')
+
+            # ALL FIRST
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            timer.log('Step')
 
             if (epoch+1) % self.log_DNN == 0:
                 print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{loss.data.item():4f}')
@@ -350,8 +380,8 @@ class ComManDo(uc.UnionCom):
             integrated_data.append(net(self.dataset[i], i))
             integrated_data[i] = integrated_data[i].detach().cpu().numpy()
         timer.log('Output')
-        timer.aggregate()
         print("Finished Mapping!")
+        timer.aggregate()
         return integrated_data
 
     def project_nlma_deprecated(self, W):

@@ -1,3 +1,9 @@
+# 2.1.0.2
+- Added `ALL FIRST` and `BATCH FIRST` calculation modes to hybrid `project_nlma`
+- Renamed default NN step timing to `BATCH FIRST`
+- Finished vanilla loss run with improved label transfer accuracy (`comparison_no-hybrid.ipynb`)
+- Renamed and reran unfinished hybrid loss run (`sample.ipynb`)
+
 # 2.1.0.1
 - Deprecated existing `project_nlma`
 - New `project_nlma` on `tsne` backend

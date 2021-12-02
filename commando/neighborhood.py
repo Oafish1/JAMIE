@@ -1,3 +1,4 @@
+# CODE FROM https://github.com/daifengwanglab/ManiNetCluster
 import numpy as np
 import scipy.spatial.distance as sd
 from sklearn.metrics.pairwise import euclidean_distances
