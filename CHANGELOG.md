@@ -1,4 +1,11 @@
-# 2.1.0
+# 2.1.0.1
+- Deprecated existing `project_nlma`
+- New `project_nlma` on `tsne` backend
+ - Hybrid loss function
+- Unfinished test runs
+- Temporarily added partial `neighborhood` module from ManiNetCluster
+
+# 2.1.0.0
 - Remove two-step, gradient optimizations temporarily
 - Comparison notebook
 - Fix NLMA scaling (coefficient fixes)

@@ -8,6 +8,8 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
 import torch
+import torch.optim as optim
+from unioncom.Model import model
 import unioncom.UnionCom as uc
 from unioncom.utils import (
     geodesic_distances,
@@ -111,7 +113,7 @@ class ComManDo(uc.UnionCom):
             for i, j in product(*(2 * [range(self.dataset_num)])):
                 if i == j:
                     # mat, _ = stats.spearmanr(self.dataset[i], axis=1)
-                    mat = np.eye(self.row[0])
+                    mat = np.eye(self.row[i])
                 elif i > j:
                     mat = match_matrix[j][i].T
                 else:
@@ -122,7 +124,11 @@ class ComManDo(uc.UnionCom):
                     # knn = 5
                     # mat.flat[::self.row[0]+1] = 0
                     # mat_sort = np.sort(mat, axis=0)[-knn]
-                    # mat = (mat >= mat_sort).astype(np.float32)
+                    # mat1 = (mat >= mat_sort).astype(np.float32)
+
+                    # Neighbor graph
+                    from .neighborhood import neighbor_graph
+                    mat = neighbor_graph(mat, k=5)
 
                 match_matrix[i][j] = mat
 
@@ -262,7 +268,93 @@ class ComManDo(uc.UnionCom):
 
         return F.cpu().detach().numpy()
 
-    def project_nlma(self, W, compressed=False):
+    def project_nlma(self, W):
+        """Perform NLMA using TSNE-like backend"""
+        print('-' * 33)
+        print('Performing NLMA')
+        assert self.dataset_num == 2, 'Hybrid NLMA is only compatible with 2 modalities'
+
+        timer = time_logger()
+        net = model(self.col, self.output_dim).to(self.device)
+        optimizer = optim.RMSprop(net.parameters(), lr=self.lr)
+        net.train()
+        mu = .9
+
+        # Convert data
+        for i in range(self.dataset_num):
+            self.dataset[i] = torch.from_numpy(self.dataset[i]).float().to(self.device)
+        (Wx, Wxy), Wy = W[0], W[1][1]
+        Wx = torch.from_numpy(Wx).float().to(self.device)
+        Wy = torch.from_numpy(Wy).float().to(self.device)
+        Wxy = torch.from_numpy(Wxy).float().to(self.device)
+
+        len_dataloader = np.int(np.max(self.row)/self.batch_size)
+        if len_dataloader == 0:
+            len_dataloader = 1
+            self.batch_size = np.max(self.row)
+        timer.log('Setup')
+
+        for epoch in range(self.epoch_DNN):
+            for step in range(len_dataloader):
+                primes = []
+                # Assumes aligned datasets
+                random_batch = np.random.randint(0, self.row[0], self.batch_size)
+                for i in range(self.dataset_num):
+                    data = self.dataset[i][random_batch]
+                    primes.append(net(data, i))
+                Wx_s = Wx[random_batch][:, random_batch]
+                Wy_s = Wy[random_batch][:, random_batch]
+                Wxy_s = Wxy[random_batch][:, random_batch]
+                timer.log('Get samples')
+
+                loss = 0
+                # ASDF: optimize
+                # fg
+                # The transpose on Wxy doesn't seem necessary due to symmetry
+                # gF_s = torch.t(torch.mm(torch.t(primes[1]), torch.t(Wxy_s)))
+                prime_full_gF = net(self.dataset[1], 1)
+                gF = torch.t(torch.mm(torch.t(prime_full_gF), torch.t(Wxy)))
+                gF_s = gF[random_batch]
+                timer.log('Loop precalculation')
+                for i, j in product(*(2 * [range(self.batch_size)])):
+                    # fg
+                    norm = primes[0][i] - gF_s[j]
+                    # norm = primes[0][i] - primes[1][j]
+                    norm = torch.linalg.norm(norm)**2
+                    loss += norm * Wxy_s[i, j] * (1 - mu)
+                    timer.log('FG')
+
+                    # ff
+                    norm = primes[0][i] - primes[0][j]
+                    norm = torch.linalg.norm(norm)**2
+                    loss += norm * Wx_s[i, j] * mu
+                    timer.log('FF')
+
+                    # gg
+                    norm = primes[1][i] - primes[1][j]
+                    norm = torch.linalg.norm(norm)**2
+                    loss += norm * Wy_s[i, j] * mu
+                    timer.log('GG')
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                timer.log('FG')
+
+            if (epoch+1) % self.log_DNN == 0:
+                print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{loss.data.item():4f}')
+
+        net.eval()
+        integrated_data = []
+        for i in range(self.dataset_num):
+            integrated_data.append(net(self.dataset[i], i))
+            integrated_data[i] = integrated_data[i].detach().cpu().numpy()
+        timer.log('Output')
+        timer.aggregate()
+        print("Finished Mapping!")
+        return integrated_data
+
+    def project_nlma_deprecated(self, W):
         """
         Projects using `F` matrices as correspondence using NLMA, heavily
         relies on methodology and code from
