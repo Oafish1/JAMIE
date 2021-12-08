@@ -1,3 +1,9 @@
+# 2.1.0.4
+- Modified `visualize` UnionCom function
+- Cleaned loss handling in `project_nlma`
+- More robust loss output
+- Notebook rerun
+
 # 2.1.0.3
 - Implemented `test_closer`, measuring fraction of samples closer to true match
 - Moved auxiliary loss calculations to new `nn_funcs` module

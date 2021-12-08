@@ -19,7 +19,7 @@ from unioncom.utils import (
 
 from .neighborhood import neighbor_graph
 from .nn_funcs import gw_loss, nlma_loss, uc_loss  # noqa
-from .utilities import time_logger
+from .utilities import time_logger, uc_visualize
 
 
 class ComManDo(uc.UnionCom):
@@ -288,8 +288,10 @@ class ComManDo(uc.UnionCom):
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
-            loss = 0
+            epoch_loss = 0
             for batch_idx in range(len_dataloader):
+                batch_loss = 0
+
                 # Assumes aligned datasets
                 random_batch = np.random.randint(0, self.row[0], self.batch_size)
                 primes = []
@@ -307,21 +309,25 @@ class ComManDo(uc.UnionCom):
                 Wx, Wy, Wxy = (torch.from_numpy(w).float().to(self.device) for w in (Wx, Wy, Wxy))
 
                 # Error calculation
-                # loss += 10000 * uc_loss(primes, F)
+                # batch_loss += 10000 * uc_loss(primes, F)
                 # timer.log('UC loss')
-                # loss += 100 * gw_loss(primes)
+                # batch_loss += 100 * gw_loss(primes)
                 # timer.log('GW loss')
-                loss += nlma_loss(primes, Wx, Wy, Wxy, self.mu)
+                batch_loss += nlma_loss(primes, Wx, Wy, Wxy, self.mu)
                 timer.log('NLMA loss')
 
-            # Step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            timer.log('Step')
+                # Record loss
+                epoch_loss += batch_loss / len_dataloader
+
+                # Step
+                loss = batch_loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                timer.log('Step')
 
             if (epoch+1) % self.log_DNN == 0:
-                print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{loss.data.item():4f}')
+                print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{epoch_loss.data.item():4f}')
                 # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
 
         net.eval()
@@ -400,3 +406,7 @@ class ComManDo(uc.UnionCom):
             raw_count_closer += np.sum(local_dist < local_dist[i])
         foscttm = raw_count_closer / (2 * size**2)
         print(f'foscttm: {foscttm}')
+
+    def Visualize(self, data, integrated_data, datatype=None, mode=None):
+        """In-class API for modified visualization function"""
+        uc_visualize(data, integrated_data, datatype=datatype, mode=mode)
