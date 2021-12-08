@@ -1,3 +1,14 @@
+# 2.1.0.3
+- Implemented `test_closer`, measuring fraction of samples closer to true match
+- Moved auxiliary loss calculations to new `nn_funcs` module
+- Revised loss function
+ - Refactored code
+ - Added matrix versions of UC term and NLMA
+ - Added naïve implementation of Gromov-Wasserstein distance
+- Renamed and added notebooks `scGEM` and `MMD-MA`
+- Removed `comparison.ipynb` and added comparisons in each notebook
+- Reran notebooks
+
 # 2.1.0.2
 - Added `ALL FIRST` and `BATCH FIRST` calculation modes to hybrid `project_nlma`
 - Renamed default NN step timing to `BATCH FIRST`

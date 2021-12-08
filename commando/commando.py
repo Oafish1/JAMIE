@@ -17,6 +17,8 @@ from unioncom.utils import (
     joint_probabilities,
 )
 
+from .neighborhood import neighbor_graph
+from .nn_funcs import gw_loss, nlma_loss, uc_loss  # noqa
 from .utilities import time_logger
 
 
@@ -24,12 +26,15 @@ class ComManDo(uc.UnionCom):
     """Adaptation of https://github.com/caokai1073/UnionCom by caokai1073"""
     def __init__(
         self,
+        mu=.9,
         **kwargs
     ):
+        self.mu = mu
+
         if 'project_mode' not in kwargs:
             kwargs['project_mode'] = 'nlma'
-        if 'distance_mode' not in kwargs:
-            kwargs['distance_mode'] = 'spearman'
+        # if 'distance_mode' not in kwargs:
+        #     kwargs['distance_mode'] = 'spearman'
 
         super().__init__(**kwargs)
 
@@ -112,26 +117,15 @@ class ComManDo(uc.UnionCom):
             k = 0
             for i, j in product(*(2 * [range(self.dataset_num)])):
                 if i == j:
-                    # mat, _ = stats.spearmanr(self.dataset[i], axis=1)
                     mat = np.eye(self.row[i])
+                    # mat, _ = stats.spearmanr(self.dataset[i], axis=1)
+                    # mat = 1/(1+self.dist[i])
                 elif i > j:
                     mat = match_matrix[j][i].T
                 else:
                     mat = match_result[k]
                     k += 1
-
-                    # # KNN
-                    # knn = 5
-                    # mat.flat[::self.row[0]+1] = 0
-                    # mat_sort = np.sort(mat, axis=0)[-knn]
-                    # mat1 = (mat >= mat_sort).astype(np.float32)
-
-                    # Neighbor graph
-                    from .neighborhood import neighbor_graph
-                    mat = neighbor_graph(mat, k=5)
-
                 match_matrix[i][j] = mat
-
             integrated_data = self.project_nlma(match_matrix)
         time.log('Mapping')
 
@@ -278,15 +272,14 @@ class ComManDo(uc.UnionCom):
         net = model(self.col, self.output_dim).to(self.device)
         optimizer = optim.RMSprop(net.parameters(), lr=self.lr)
         net.train()
-        mu = .9
 
         # Convert data
         for i in range(self.dataset_num):
             self.dataset[i] = torch.from_numpy(self.dataset[i]).float().to(self.device)
-        (Wx, Wxy), Wy = W[0], W[1][1]
-        Wx = torch.from_numpy(Wx).float().to(self.device)
-        Wy = torch.from_numpy(Wy).float().to(self.device)
-        Wxy = torch.from_numpy(Wxy).float().to(self.device)
+        (x, xy), y = W[0], W[1][1]
+        x = torch.from_numpy(x).float().to(self.device)
+        y = torch.from_numpy(y).float().to(self.device)
+        xy = torch.from_numpy(xy).float().to(self.device)
 
         len_dataloader = np.int(np.max(self.row)/self.batch_size)
         if len_dataloader == 0:
@@ -295,77 +288,33 @@ class ComManDo(uc.UnionCom):
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
-            # ALL FIRST
-            primes = []
             loss = 0
-            # Assumes aligned datasets
-            for i in range(self.dataset_num):
-                primes.append(net(self.dataset[i], i))
-            timer.log('Get samples')
-            # ALL FIRST MODIFICATION
-            # gF = torch.t(torch.mm(torch.t(primes[1]), torch.t(Wxy)))
-            # timer.log('gF calculation')
-
             for batch_idx in range(len_dataloader):
-                # ALL FIRST
+                # Assumes aligned datasets
                 random_batch = np.random.randint(0, self.row[0], self.batch_size)
-                primes_s = [p[random_batch] for p in primes]
-                Wx_s = Wx[random_batch][:, random_batch]
-                Wy_s = Wy[random_batch][:, random_batch]
-                Wxy_s = Wxy[random_batch][:, random_batch]
-                # ALL FIRST MODIFICATION
-                # gF_s = gF[random_batch]
+                primes = []
+                for i in range(self.dataset_num):
+                    data = self.dataset[i][random_batch]
+                    primes.append(net(data, i))
                 timer.log('Get subset samples')
 
-                # BATCH FIRST
-                # primes_s = []
-                # loss = 0
-                # # Assumes aligned datasets
-                # random_batch = np.random.randint(0, self.row[0], self.batch_size)
-                # for i in range(self.dataset_num):
-                #     data = self.dataset[i][random_batch]
-                #     primes_s.append(net(data, i))
-                # Wx_s = Wx[random_batch][:, random_batch]
-                # Wy_s = Wy[random_batch][:, random_batch]
-                # Wxy_s = Wxy[random_batch][:, random_batch]
-                # timer.log('Get subset samples')
-
-                # BATCH FIRST MODIFICATION
-                # # ASDF: optimize
-                # gF_s = torch.t(torch.mm(torch.t(primes_s[1]), torch.t(Wxy_s)))
-                # prime_full_gF = net(self.dataset[1], 1)
-                # gF = torch.t(torch.mm(torch.t(prime_full_gF), torch.t(Wxy)))
-                # gF_s = gF[random_batch]
-                # timer.log('gF_s calculation')
+                # Data setup
+                Wx = neighbor_graph(x[random_batch][:, random_batch], k=5)
+                Wy = neighbor_graph(y[random_batch][:, random_batch], k=5)
+                F = xy[random_batch][:, random_batch]
+                F /= F.sum()
+                Wxy = neighbor_graph(F, k=5)
+                Wx, Wy, Wxy = (torch.from_numpy(w).float().to(self.device) for w in (Wx, Wy, Wxy))
 
                 # Error calculation
-                for i, j in product(*(2 * [range(self.batch_size)])):
-                    # fg
-                    # norm = primes[0][i] - gF_s[j]
-                    norm = primes_s[0][i] - primes_s[1][j]
-                    norm = torch.linalg.norm(norm)**2
-                    loss += norm * Wxy_s[i, j] * (1 - mu)
-                    timer.log('FG')
+                # loss += 10000 * uc_loss(primes, F)
+                # timer.log('UC loss')
+                # loss += 100 * gw_loss(primes)
+                # timer.log('GW loss')
+                loss += nlma_loss(primes, Wx, Wy, Wxy, self.mu)
+                timer.log('NLMA loss')
 
-                    # ff
-                    norm = primes_s[0][i] - primes_s[0][j]
-                    norm = torch.linalg.norm(norm)**2
-                    loss += norm * Wx_s[i, j] * mu
-                    timer.log('FF')
-
-                    # gg
-                    norm = primes_s[1][i] - primes_s[1][j]
-                    norm = torch.linalg.norm(norm)**2
-                    loss += norm * Wy_s[i, j] * mu
-                    timer.log('GG')
-
-                # # BATCH FIRST
-                # optimizer.zero_grad()
-                # loss.backward()
-                # optimizer.step()
-                # timer.log('Step')
-
-            # ALL FIRST
+            # Step
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -373,6 +322,7 @@ class ComManDo(uc.UnionCom):
 
             if (epoch+1) % self.log_DNN == 0:
                 print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{loss.data.item():4f}')
+                # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
 
         net.eval()
         integrated_data = []
@@ -383,72 +333,6 @@ class ComManDo(uc.UnionCom):
         print("Finished Mapping!")
         timer.aggregate()
         return integrated_data
-
-    def project_nlma_deprecated(self, W):
-        """
-        Projects using `F` matrices as correspondence using NLMA, heavily
-        relies on methodology and code from
-        https://github.com/daifengwanglab/ManiNetCluster
-        """
-        print('-' * 33)
-        print('Performing NLMA')
-        mu = .9
-        eps = 1e-8
-        vec_func = None
-
-        print('Applying Coefficients')
-        diag_sum = sum(W[i][i] for i in range(self.dataset_num))
-        for i, j in (
-            (i, j) for i in range(self.dataset_num) for j in range(i+1, self.dataset_num)
-        ):
-            # NOTE: Assumes that transposes are the same array in memory
-            W[i][j] = mu * diag_sum / (self.dataset_num * W[i][j].sum()) * W[i][j]
-        W = np.asarray(np.bmat(W))
-        # print(W)
-
-        print('Computing Laplacian')
-        # Dense calculation of scipy.sparse.csgraph.laplacian from
-        # ManiNetCluster
-        n_nodes = self.row[0]
-        L = -W
-        L.flat[::n_nodes + 1] = 0
-        d = -L.sum(axis=0)
-        L.flat[::n_nodes + 1] = d
-
-        print('Calculating eigenvectors')
-        # vals, vecs = linalg.eigh(
-        #     L,
-        #     lower=False,
-        #     overwrite_a=True,
-        #     # https://docs.scipy.org/doc/scipy/reference/generated/scipy.linalg.eigh.html
-        #     # Note: Default of 'evx' is only best when taking very few eigenvectors
-        #     # from a large matrix
-        #     driver='evx',
-        #     subset_by_value=(eps, np.inf),
-        # )
-        vals, vecs = np.linalg.eig(L)
-
-        idx = np.argsort(vals)
-        for i in range(len(idx)):
-            if vals[idx[i]] >= eps:
-                break
-        # print(vals[idx[i:]])
-        vecs = vecs.real[:, idx[i:]]
-        if vec_func:
-            vecs = vec_func(vecs)
-
-        for i in range(vecs.shape[1]):
-            vecs[:, i] /= np.linalg.norm(vecs[:, i])
-
-        print('Perfoming mapping')
-        maps = ()
-        min_idx = 0
-        for dx in self.row:
-            map = vecs[min_idx:min_idx + dx, :self.output_dim]
-            maps += (map,)
-            min_idx += dx
-
-        return maps
 
     def compute_distances(self):
         """Helper function to compute distances for each dataset"""
@@ -493,5 +377,26 @@ class ComManDo(uc.UnionCom):
                 def distance_function(df):
                     return pairwise_distances(df, metric=self.distance_mode)
 
-            distances = distance_function(self.dataset[i])
+            self.distance_function = distance_function
+            distances = self.distance_function(self.dataset[i])
             self.dist.append(distances)
+
+    def test_closer(self, integrated_data, distance_metric=None):
+        """Test fraction of samples closer than the true match"""
+        # ASDF: 3+ datasets and non-aligned data
+        assert len(integrated_data) == 2, 'Two datasets are supported for FOSCTTM'
+
+        if distance_metric is None:
+            distance_metric = self.distance_function
+        distances = distance_metric(np.concatenate(integrated_data, axis=0))
+        size = integrated_data[0].shape[0]
+        raw_count_closer = 0
+        for i in range(size):
+            # A -> B
+            local_dist = distances[i][size:]
+            raw_count_closer += np.sum(local_dist < local_dist[i])
+            # B -> A
+            local_dist = distances[size+i][:size]
+            raw_count_closer += np.sum(local_dist < local_dist[i])
+        foscttm = raw_count_closer / (2 * size**2)
+        print(f'foscttm: {foscttm}')
