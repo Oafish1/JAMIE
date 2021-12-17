@@ -1,3 +1,9 @@
+# 2.1.0.5
+- Removed temporary `neighborhood` module
+- Added neighbor graph utility `knn` to `nn_funcs` module
+- Added guaranteed connectivity to `knn`
+- Tuning and reruns on all notebooks
+
 # 2.1.0.4
 - Modified `visualize` UnionCom function
 - Cleaned loss handling in `project_nlma`

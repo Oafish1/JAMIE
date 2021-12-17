@@ -10,6 +10,11 @@
 [Source](https://github.com/daifengwanglab/ManiNetCluster)
 
 
+# Other Papers
+### Poincaré Maps for Analyzing Complex Hierarchies in Single-Cell Data 
+[Paper](https://www.nature.com/articles/s41467-020-16822-4)
+
+
 # Data
 ### NeurIPS Competition
 [Webpage](https://openproblems.bio/neurips_docs/about/)

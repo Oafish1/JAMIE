@@ -17,8 +17,7 @@ from unioncom.utils import (
     joint_probabilities,
 )
 
-from .neighborhood import neighbor_graph
-from .nn_funcs import gw_loss, nlma_loss, uc_loss  # noqa
+from .nn_funcs import gw_loss, knn, nlma_loss, uc_loss  # noqa
 from .utilities import time_logger, uc_visualize
 
 
@@ -117,9 +116,9 @@ class ComManDo(uc.UnionCom):
             k = 0
             for i, j in product(*(2 * [range(self.dataset_num)])):
                 if i == j:
-                    mat = np.eye(self.row[i])
+                    # mat = np.eye(self.row[i])
                     # mat, _ = stats.spearmanr(self.dataset[i], axis=1)
-                    # mat = 1/(1+self.dist[i])
+                    mat = 1/(1+self.dist[i])
                 elif i > j:
                     mat = match_matrix[j][i].T
                 else:
@@ -268,6 +267,10 @@ class ComManDo(uc.UnionCom):
         print('Performing NLMA')
         assert self.dataset_num == 2, 'Hybrid NLMA is only compatible with 2 modalities'
 
+        # Tuning -- used for simulation 1
+        # self.epoch_DNN = 500
+        self.lr = .01
+
         timer = time_logger()
         net = model(self.col, self.output_dim).to(self.device)
         optimizer = optim.RMSprop(net.parameters(), lr=self.lr)
@@ -282,6 +285,7 @@ class ComManDo(uc.UnionCom):
         xy = torch.from_numpy(xy).float().to(self.device)
 
         len_dataloader = np.int(np.max(self.row)/self.batch_size)
+        # len_dataloader = 0
         if len_dataloader == 0:
             len_dataloader = 1
             self.batch_size = np.max(self.row)
@@ -301,11 +305,11 @@ class ComManDo(uc.UnionCom):
                 timer.log('Get subset samples')
 
                 # Data setup
-                Wx = neighbor_graph(x[random_batch][:, random_batch], k=5)
-                Wy = neighbor_graph(y[random_batch][:, random_batch], k=5)
+                Wx = knn(x[random_batch][:, random_batch], k=5)
+                Wy = knn(y[random_batch][:, random_batch], k=5)
                 F = xy[random_batch][:, random_batch]
                 F /= F.sum()
-                Wxy = neighbor_graph(F, k=5)
+                Wxy = knn(F, k=5)
                 Wx, Wy, Wxy = (torch.from_numpy(w).float().to(self.device) for w in (Wx, Wy, Wxy))
 
                 # Error calculation

@@ -1,4 +1,45 @@
+import numpy as np
+from scipy.sparse.csgraph import connected_components
+import scipy.spatial.distance as sd
 import torch
+
+
+def knn(data, k=5):
+    """Connected KNN generation"""
+    # ASDF: Make sparse
+    # from scipy.sparse import csr_matrix
+    # adj = csr_matrix(adj)
+    # Adapted version of ``neighbor_graph`` from ManiNetCluster
+    dist = sd.squareform(sd.pdist(data, 'sqeuclidean'), force='tomatrix')
+    adj = np.zeros(dist.shape)
+    idxs = np.argsort(dist)[:, :k+1]
+    for idx in idxs:
+        adj[idx[0], idx[1:]] = dist[idx[0], idx[1:]]
+        # Symmetrize
+        adj[idx[1:], idx[0]] = dist[idx[1:], idx[0]]
+
+    # Connection via
+    # https://www.nature.com/articles/s41467-020-16822-4
+    n_components, labels = connected_components(adj, directed=False)
+    for i in range(n_components-1):
+        g1_idx = np.arange(dist.shape[0])[np.array(labels) == i]
+        g2_idx = np.arange(dist.shape[0])[np.array(labels) == i+1]
+        idx = np.concatenate((g1_idx, g2_idx))
+        sub_dist = dist[g1_idx][:, g2_idx]
+        min_dist = np.unravel_index(np.argmin(sub_dist, axis=None), sub_dist.shape)
+        g1_new_idx = g1_idx[min_dist[0]]
+        g2_new_idx = g2_idx[min_dist[1]]
+        adj[g1_new_idx, g2_new_idx] = sub_dist[min_dist]
+    # assert connected_components(adj, directed=False)[0] == 1, (
+    #     'Something went wrong when connecting components...'
+    # )
+
+    # ASDF: Implement Gaussian kernel
+    # adj = adj.toarray()
+    # adj[adj > 0] = 1 / adj[adj > 0]
+    # adj[adj > 0] = -np.log(adj[adj > 0])
+    adj[adj > 0] = np.exp(-adj[adj > 0])
+    return adj
 
 
 def uc_loss(primes, F, pairwise=False):
@@ -48,6 +89,8 @@ def nlma_loss(
                     norm = torch.square(norm).sum()
                     nlma_loss += norm * Wy[i, j] * mu
     else:
+        # Fast matrix version
+        # ASDDF: Get into normal, interprable loss range
         num_cells = Wxy.shape[0]
 
         Dx = torch.sum(Wx, dim=0)
