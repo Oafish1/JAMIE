@@ -297,7 +297,9 @@ class ComManDo(uc.UnionCom):
                 F = W[0][1][random_batch][:, random_batch]
                 # F = knn(F, k=5)
                 F = torch.from_numpy(F).float().to(self.device)
+                F_inv = 1 - F
                 F /= F.sum()
+                F_inv /= F_inv.sum()
                 timer.log('Get subset samples')
 
                 # Run model
@@ -310,7 +312,7 @@ class ComManDo(uc.UnionCom):
                 batch_loss += 1e-4 * reconstruction_diff
                 timer.log('Reconstruction loss')
 
-                # Assumes all aligned and two modalities
+                # Cosine difference
                 csim = cosine_similarity(embedded[0], embedded[1])
                 cdiff = 1 - csim
 
@@ -323,10 +325,16 @@ class ComManDo(uc.UnionCom):
                 batch_loss += 1e+1 * weighted_F_cdiff.sum()
                 timer.log('F-cross loss')
 
+                # Inverse cross error using F
+                weighted_F_inv_csim = csim * F_inv
+                batch_loss += 1e+0 * weighted_F_inv_csim.sum()
+                timer.log('F-cross loss')
+
                 # Debug print losses
                 # print(reconstruction_diff)
                 # print(cdiff.sum())
                 # print(weighted_F_cdiff.sum())
+                # print(weighted_F_inv_csim.sum())
                 # print()
 
                 # Record loss

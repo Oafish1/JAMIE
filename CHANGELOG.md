@@ -1,3 +1,7 @@
+# 2.1.0.7
+- Added inverse cross loss
+- Notebook reruns
+
 # 2.1.0.6
 - Implement encoder-decoder model
 - Add custom `model` module
