@@ -8,8 +8,8 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
 import torch
+import torch.nn as nn
 import torch.optim as optim
-from unioncom.Model import model
 import unioncom.UnionCom as uc
 from unioncom.utils import (
     geodesic_distances,
@@ -17,6 +17,7 @@ from unioncom.utils import (
     joint_probabilities,
 )
 
+from .model import edModel
 from .nn_funcs import gw_loss, knn, nlma_loss, uc_loss  # noqa
 from .utilities import time_logger, uc_visualize
 
@@ -117,8 +118,7 @@ class ComManDo(uc.UnionCom):
             for i, j in product(*(2 * [range(self.dataset_num)])):
                 if i == j:
                     # mat = np.eye(self.row[i])
-                    # mat, _ = stats.spearmanr(self.dataset[i], axis=1)
-                    mat = 1/(1+self.dist[i])
+                    mat = None
                 elif i > j:
                     mat = match_matrix[j][i].T
                 else:
@@ -154,10 +154,6 @@ class ComManDo(uc.UnionCom):
 
         print("Finished Matching!")
         return cor_pairs
-
-    def fast_Prime_Dual(self, dist, dx=None, dy=None):
-        """New home of two-step"""
-        pass
 
     def Prime_Dual(
         self,
@@ -265,27 +261,24 @@ class ComManDo(uc.UnionCom):
         """Perform NLMA using TSNE-like backend"""
         print('-' * 33)
         print('Performing NLMA')
-        assert self.dataset_num == 2, 'Hybrid NLMA is only compatible with 2 modalities'
+        assert len(W) == 2, 'Only compatible with 2 modalities during testing'
 
-        # Tuning -- used for simulation 1
+        # Tuning
         # self.epoch_DNN = 500
-        self.lr = .01
+        # self.lr = .01
 
         timer = time_logger()
-        net = model(self.col, self.output_dim).to(self.device)
+        net = edModel(self.col, self.output_dim).to(self.device)
         optimizer = optim.RMSprop(net.parameters(), lr=self.lr)
+        cosine_similarity = nn.CosineSimilarity(dim=1, eps=1e-08)
         net.train()
 
         # Convert data
         for i in range(self.dataset_num):
             self.dataset[i] = torch.from_numpy(self.dataset[i]).float().to(self.device)
-        (x, xy), y = W[0], W[1][1]
-        x = torch.from_numpy(x).float().to(self.device)
-        y = torch.from_numpy(y).float().to(self.device)
-        xy = torch.from_numpy(xy).float().to(self.device)
 
+        # Maybe revise (from UnionCom)
         len_dataloader = np.int(np.max(self.row)/self.batch_size)
-        # len_dataloader = 0
         if len_dataloader == 0:
             len_dataloader = 1
             self.batch_size = np.max(self.row)
@@ -296,29 +289,45 @@ class ComManDo(uc.UnionCom):
             for batch_idx in range(len_dataloader):
                 batch_loss = 0
 
-                # Assumes aligned datasets
+                # Assumes aligned datasets for testing
                 random_batch = np.random.randint(0, self.row[0], self.batch_size)
-                primes = []
-                for i in range(self.dataset_num):
-                    data = self.dataset[i][random_batch]
-                    primes.append(net(data, i))
+                data = [self.dataset[i][random_batch] for i in range(self.dataset_num)]
+
+                # F setup
+                F = W[0][1][random_batch][:, random_batch]
+                # F = knn(F, k=5)
+                F = torch.from_numpy(F).float().to(self.device)
+                F /= F.sum()
                 timer.log('Get subset samples')
 
-                # Data setup
-                Wx = knn(x[random_batch][:, random_batch], k=5)
-                Wy = knn(y[random_batch][:, random_batch], k=5)
-                F = xy[random_batch][:, random_batch]
-                F /= F.sum()
-                Wxy = knn(F, k=5)
-                Wx, Wy, Wxy = (torch.from_numpy(w).float().to(self.device) for w in (Wx, Wy, Wxy))
+                # Run model
+                embedded, reconstructed = net(*data)
+                timer.log('Run model')
 
-                # Error calculation
-                # batch_loss += 10000 * uc_loss(primes, F)
-                # timer.log('UC loss')
-                # batch_loss += 100 * gw_loss(primes)
-                # timer.log('GW loss')
-                batch_loss += nlma_loss(primes, Wx, Wy, Wxy, self.mu)
-                timer.log('NLMA loss')
+                # Reconstruction error
+                reconstruction_diff = [reconstructed[i] - data[i] for i in range(self.dataset_num)]
+                reconstruction_diff = torch.cat(reconstruction_diff, dim=1).square().sum()
+                batch_loss += 1e-4 * reconstruction_diff
+                timer.log('Reconstruction loss')
+
+                # Assumes all aligned and two modalities
+                csim = cosine_similarity(embedded[0], embedded[1])
+                cdiff = 1 - csim
+
+                # Alignment error (will be more complicated with semi-supervision)
+                batch_loss += 1e-1 * cdiff.sum()
+                timer.log('Aligned loss')
+
+                # Cross error using F
+                weighted_F_cdiff = cdiff * F
+                batch_loss += 1e+1 * weighted_F_cdiff.sum()
+                timer.log('F-cross loss')
+
+                # Debug print losses
+                # print(reconstruction_diff)
+                # print(cdiff.sum())
+                # print(weighted_F_cdiff.sum())
+                # print()
 
                 # Record loss
                 epoch_loss += batch_loss / len_dataloader
@@ -335,10 +344,8 @@ class ComManDo(uc.UnionCom):
                 # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
 
         net.eval()
-        integrated_data = []
-        for i in range(self.dataset_num):
-            integrated_data.append(net(self.dataset[i], i))
-            integrated_data[i] = integrated_data[i].detach().cpu().numpy()
+        integrated_data, _ = net(*self.dataset)
+        integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")
         timer.aggregate()

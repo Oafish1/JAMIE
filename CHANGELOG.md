@@ -1,3 +1,8 @@
+# 2.1.0.6
+- Implement encoder-decoder model
+- Add custom `model` module
+- Re-run notebooks (doing well!)
+
 # 2.1.0.5
 - Removed temporary `neighborhood` module
 - Added neighbor graph utility `knn` to `nn_funcs` module
