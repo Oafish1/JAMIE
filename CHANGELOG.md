@@ -1,3 +1,11 @@
+# 2.1.0.8
+- Make loss function more modular
+  - Add switchable distance function (Euclidean, Manhattan, Cosine, etc.)
+- Simplify loss function
+- Fix similarity function
+- Re-add connected KNN to F
+- Notebook reruns
+
 # 2.1.0.7
 - Added inverse cross loss
 - Notebook reruns

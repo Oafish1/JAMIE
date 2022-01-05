@@ -8,7 +8,7 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
 import torch
-import torch.nn as nn
+import torch.nn as nn  # noqa
 import torch.optim as optim
 import unioncom.UnionCom as uc
 from unioncom.utils import (
@@ -270,7 +270,24 @@ class ComManDo(uc.UnionCom):
         timer = time_logger()
         net = edModel(self.col, self.output_dim).to(self.device)
         optimizer = optim.RMSprop(net.parameters(), lr=self.lr)
-        cosine_similarity = nn.CosineSimilarity(dim=1, eps=1e-08)
+
+        def sim_dist_func(a, b):
+            # Cosine Similarity
+            sim = (
+                torch.mm(a, torch.t(b))
+                / a.norm(dim=1).reshape(-1, 1)
+                / b.norm(dim=1).reshape(1, -1)
+            )
+            return sim, 1-sim
+
+            # Euclidean Distance (naïve)
+            # dist = torch.zeros(a.size()[0], b.size()[0])
+            # for i in range(a.size()[0]):
+            #     for j in range(b.size()[0]):
+            #         dist[i][j] = torch.linalg.norm(a[i] - b[j])
+            # sim = 1 / (1+dist)
+            # return sim, dist
+
         net.train()
 
         # Convert data
@@ -295,7 +312,7 @@ class ComManDo(uc.UnionCom):
 
                 # F setup
                 F = W[0][1][random_batch][:, random_batch]
-                # F = knn(F, k=5)
+                F = knn(F, k=5)
                 F = torch.from_numpy(F).float().to(self.device)
                 F_inv = 1 - F
                 F /= F.sum()
@@ -309,15 +326,18 @@ class ComManDo(uc.UnionCom):
                 # Reconstruction error
                 reconstruction_diff = [reconstructed[i] - data[i] for i in range(self.dataset_num)]
                 reconstruction_diff = torch.cat(reconstruction_diff, dim=1).square().sum()
-                batch_loss += 1e-4 * reconstruction_diff
+                batch_loss += 1e-3 * reconstruction_diff
                 timer.log('Reconstruction loss')
 
-                # Cosine difference
-                csim = cosine_similarity(embedded[0], embedded[1])
-                cdiff = 1 - csim
+                # Difference
+                csim, cdiff = sim_dist_func(embedded[0], embedded[1])
+
+                # diff_func = lambda a, b: (a-b).square().sum(dim=1).sqrt()
+                # cdiff = diff_func(embedded[0], embedded[1])
+                # csim = 1 / (1+cdiff)
 
                 # Alignment error (will be more complicated with semi-supervision)
-                batch_loss += 1e-1 * cdiff.sum()
+                batch_loss += 2e-4 * cdiff.diag().sum()
                 timer.log('Aligned loss')
 
                 # Cross error using F
@@ -327,7 +347,7 @@ class ComManDo(uc.UnionCom):
 
                 # Inverse cross error using F
                 weighted_F_inv_csim = csim * F_inv
-                batch_loss += 1e+0 * weighted_F_inv_csim.sum()
+                batch_loss += 3e+0 * weighted_F_inv_csim.sum()
                 timer.log('F-cross loss')
 
                 # Debug print losses
