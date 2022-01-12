@@ -1,3 +1,9 @@
+# 2.1.0.9
+- Added compatibility for partially aligned datasets using overlapping average vectors
+- Added compatibility for differently-sized datasets
+- Added "mix-in" metrics to control how much training is done on aligned sets
+- Added more visualization for differently aligned datasets
+
 # 2.1.0.8
 - Make loss function more modular
   - Add switchable distance function (Euclidean, Manhattan, Cosine, etc.)

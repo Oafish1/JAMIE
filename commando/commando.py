@@ -26,10 +26,17 @@ class ComManDo(uc.UnionCom):
     """Adaptation of https://github.com/caokai1073/UnionCom by caokai1073"""
     def __init__(
         self,
-        mu=.9,
+        aligned_idx=None,
+        aligned_sample_pct=None,
         **kwargs
     ):
-        self.mu = mu
+        self.aligned_idx = aligned_idx
+        self.aligned_sample_pct = aligned_sample_pct
+
+        if self.aligned_idx is not None:
+            assert len(self.aligned_idx[0]) == len(self.aligned_idx[1]), (
+                '``aligned_idx`` must be of the form ((n), (n)).'
+            )
 
         if 'project_mode' not in kwargs:
             kwargs['project_mode'] = 'nlma'
@@ -261,7 +268,19 @@ class ComManDo(uc.UnionCom):
         """Perform NLMA using TSNE-like backend"""
         print('-' * 33)
         print('Performing NLMA')
-        assert len(W) == 2, 'Only compatible with 2 modalities during testing'
+        assert len(W) == 2, 'Currently only compatible with 2 modalities.'
+
+        # Default vars
+        if self.aligned_idx is None:
+            # If not given, assume total alignment iff datasets are same size
+            if self.row[0] == self.row[1]:
+                self.aligned_idx = (range(self.row[0]), range(self.row[1]))
+            else:
+                self.aligned_idx = ((), ())
+        if self.aligned_sample_pct is None:
+            self.aligned_sample_pct = max(
+                len(self.aligned_idx[i])/self.row[i] for i in range(self.dataset_num)
+            )
 
         # Tuning
         # self.epoch_DNN = 500
@@ -294,11 +313,13 @@ class ComManDo(uc.UnionCom):
         for i in range(self.dataset_num):
             self.dataset[i] = torch.from_numpy(self.dataset[i]).float().to(self.device)
 
-        # Maybe revise (from UnionCom)
+        # Batch size setup, mainly from UnionCom
         len_dataloader = np.int(np.max(self.row)/self.batch_size)
         if len_dataloader == 0:
             len_dataloader = 1
             self.batch_size = np.max(self.row)
+        num_aligned = int(self.aligned_sample_pct * self.batch_size)
+        num_unaligned = self.batch_size - num_aligned
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
@@ -306,12 +327,23 @@ class ComManDo(uc.UnionCom):
             for batch_idx in range(len_dataloader):
                 batch_loss = 0
 
-                # Assumes aligned datasets for testing
-                random_batch = np.random.randint(0, self.row[0], self.batch_size)
-                data = [self.dataset[i][random_batch] for i in range(self.dataset_num)]
+                # Random samples
+                random_aligned = np.random.randint(
+                    0, len(self.aligned_idx[0]), num_aligned
+                )
+                random_unaligned = [
+                    np.random.randint(0, self.row[i], num_unaligned)
+                    for i in range(self.dataset_num)
+                ]
+                random_batch = [
+                    np.concatenate((random_aligned, unaligned))
+                    for unaligned in random_unaligned
+                ]
+                data = [self.dataset[i][random_batch[i]] for i in range(self.dataset_num)]
+                aligned_subset_idx = 2 * (range(num_aligned),)
 
                 # F setup
-                F = W[0][1][random_batch][:, random_batch]
+                F = W[0][1][random_batch[0]][:, random_batch[1]]
                 F = knn(F, k=5)
                 F = torch.from_numpy(F).float().to(self.device)
                 F_inv = 1 - F
@@ -320,7 +352,7 @@ class ComManDo(uc.UnionCom):
                 timer.log('Get subset samples')
 
                 # Run model
-                embedded, reconstructed = net(*data)
+                embedded, reconstructed = net(*data, aligned_idx=aligned_subset_idx)
                 timer.log('Run model')
 
                 # Reconstruction error
@@ -332,12 +364,8 @@ class ComManDo(uc.UnionCom):
                 # Difference
                 csim, cdiff = sim_dist_func(embedded[0], embedded[1])
 
-                # diff_func = lambda a, b: (a-b).square().sum(dim=1).sqrt()
-                # cdiff = diff_func(embedded[0], embedded[1])
-                # csim = 1 / (1+cdiff)
-
-                # Alignment error (will be more complicated with semi-supervision)
-                batch_loss += 2e-4 * cdiff.diag().sum()
+                # Alignment error
+                batch_loss += 2e-4 * cdiff.diag()[:num_aligned].sum()
                 timer.log('Aligned loss')
 
                 # Cross error using F
@@ -372,7 +400,7 @@ class ComManDo(uc.UnionCom):
                 # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
 
         net.eval()
-        integrated_data, _ = net(*self.dataset)
+        integrated_data, _ = net(*self.dataset, aligned_idx=self.aligned_idx)
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")

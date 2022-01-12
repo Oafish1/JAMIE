@@ -53,10 +53,33 @@ class edModel(nn.Module):
             ))
         self.decoders = nn.ModuleList(self.decoders)
 
-    def forward(self, *X):
-        """Regular forward method"""
+    def forward(self, *X, aligned_idx=None):
+        """
+        Regular forward method.
+
+        aligned_idx: List of idxs for aligned pairs.  Currently given as
+            ((1, 3, 10, etc.), (1, 3, 15, etc.)).  Support for duplicate
+            alignments would require revision on the averaging.
+        """
+        assert aligned_idx is not None, '``aligned_idx`` must be provided.'
         embedded = [self.encoders[i](X[i]) for i in range(self.num_modalities)]
-        combined = torch.stack(embedded, dim=0).sum(dim=0)  # Needs to change for partial align
-        reconstructed = [self.decoders[i](combined) for i in range(self.num_modalities)]
+
+        # For full, ordered alignment
+        # combined = torch.stack(embedded, dim=0).sum(dim=0)
+        # reconstructed = [self.decoders[i](combined) for i in range(self.num_modalities)]
+
+        # Optimize this
+        overlap = [embedded[i][aligned_idx[i]] for i in range(self.num_modalities)]
+        combined = torch.stack(overlap, dim=0).sum(dim=0) / 2
+        unaligned_idx = [
+            [j for j in range(len(X[i])) if j not in aligned_idx[i]]
+            for i in range(self.num_modalities)
+        ]
+        assembled = [
+            torch.cat([embedded[i][unaligned_idx[i]], combined], dim=0)
+            for i in range(self.num_modalities)
+        ]
+
+        reconstructed = [self.decoders[i](assembled[i]) for i in range(self.num_modalities)]
 
         return embedded, reconstructed
