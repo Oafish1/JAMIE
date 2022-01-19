@@ -114,7 +114,13 @@ ENV/
 
 # Data
 examples/**/*.csv
+examples/**/*.gz
 examples/**/*.h5ad
+examples/**/*.md
+examples/**/*.png
+examples/**/*.tsv
+examples/**/*.txt
+examples/**/*.vcf
 examples/**/*.xlsx
 
 # Lightning
@@ -132,3 +138,4 @@ submission/**
 
 # Scratch files
 **/scratch*
+**/*.hidden*
