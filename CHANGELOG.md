@@ -1,3 +1,10 @@
+# 3.0.0
+- Add evaluation graph for alignment assumptions
+- Merge notebooks
+- Example directory reorganization
+- Removed certain errant checks
+- Add modality prediction samples
+
 # 2.1.0.9
 - Added compatibility for partially aligned datasets using overlapping average vectors
 - Added compatibility for differently-sized datasets
@@ -16,7 +23,7 @@
 - Added inverse cross loss
 - Notebook reruns
 
-# 2.1.0.6
+# 2.1.0.6 (3.0.0.0)
 - Implement encoder-decoder model
 - Add custom `model` module
 - Re-run notebooks (doing well!)

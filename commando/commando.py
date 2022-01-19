@@ -19,7 +19,7 @@ from unioncom.utils import (
 
 from .model import edModel
 from .nn_funcs import gw_loss, knn, nlma_loss, uc_loss  # noqa
-from .utilities import time_logger, uc_visualize
+from .utilities import time_logger, transfer_accuracy, uc_visualize
 
 
 class ComManDo(uc.UnionCom):
@@ -28,10 +28,12 @@ class ComManDo(uc.UnionCom):
         self,
         aligned_idx=None,
         aligned_sample_pct=None,
+        in_place=False,
         **kwargs
     ):
         self.aligned_idx = aligned_idx
         self.aligned_sample_pct = aligned_sample_pct
+        self.in_place = in_place
 
         if self.aligned_idx is not None:
             assert len(self.aligned_idx[0]) == len(self.aligned_idx[1]), (
@@ -81,13 +83,14 @@ class ComManDo(uc.UnionCom):
             self.dataset = [d.X for d in self.dataset]
             self.dataset_annotation = dataset
 
+        # Make a copy
+        if not self.in_place:
+            self.dataset = self.dataset * 1
+
         self.dataset_num = len(self.dataset)
         for i in range(self.dataset_num):
             self.row.append(np.shape(self.dataset[i])[0])
             self.col.append(np.shape(self.dataset[i])[1])
-
-        if self.project_mode == 'nlma' and not (np.array(self.row) == self.row[0]).all():
-            raise Exception("project_mode: 'nlma' requres aligned datasets.")
 
         # Compute the distance matrix
         self.compute_distances()
@@ -287,8 +290,8 @@ class ComManDo(uc.UnionCom):
         # self.lr = .01
 
         timer = time_logger()
-        net = edModel(self.col, self.output_dim).to(self.device)
-        optimizer = optim.RMSprop(net.parameters(), lr=self.lr)
+        self.model = edModel(self.col, self.output_dim).to(self.device)
+        optimizer = optim.RMSprop(self.model.parameters(), lr=self.lr)
 
         def sim_dist_func(a, b):
             # Cosine Similarity
@@ -307,7 +310,7 @@ class ComManDo(uc.UnionCom):
             # sim = 1 / (1+dist)
             # return sim, dist
 
-        net.train()
+        self.model.train()
 
         # Convert data
         for i in range(self.dataset_num):
@@ -352,7 +355,7 @@ class ComManDo(uc.UnionCom):
                 timer.log('Get subset samples')
 
                 # Run model
-                embedded, reconstructed = net(*data, aligned_idx=aligned_subset_idx)
+                embedded, reconstructed = self.model(*data, aligned_idx=aligned_subset_idx)
                 timer.log('Run model')
 
                 # Reconstruction error
@@ -376,7 +379,7 @@ class ComManDo(uc.UnionCom):
                 # Inverse cross error using F
                 weighted_F_inv_csim = csim * F_inv
                 batch_loss += 3e+0 * weighted_F_inv_csim.sum()
-                timer.log('F-cross loss')
+                timer.log('F-inv-cross loss')
 
                 # Debug print losses
                 # print(reconstruction_diff)
@@ -399,8 +402,8 @@ class ComManDo(uc.UnionCom):
                 print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{epoch_loss.data.item():4f}')
                 # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
 
-        net.eval()
-        integrated_data, _ = net(*self.dataset, aligned_idx=self.aligned_idx)
+        self.model.eval()
+        integrated_data, _ = self.model(*self.dataset, aligned_idx=self.aligned_idx)
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")
@@ -473,6 +476,13 @@ class ComManDo(uc.UnionCom):
             raw_count_closer += np.sum(local_dist < local_dist[i])
         foscttm = raw_count_closer / (2 * size**2)
         print(f'foscttm: {foscttm}')
+        return foscttm
+
+    def test_LabelTA(self, integrated_data, datatype):
+        """Modified version of UnionCom ``test_LabelTA`` to return acc"""
+        acc = transfer_accuracy(integrated_data[0], integrated_data[1], datatype[0], datatype[1])
+        print(f"label transfer accuracy: {acc}")
+        return acc
 
     def Visualize(self, data, integrated_data, datatype=None, mode=None):
         """In-class API for modified visualization function"""
