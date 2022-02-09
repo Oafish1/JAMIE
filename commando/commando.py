@@ -18,27 +18,29 @@ from unioncom.utils import (
 )
 
 from .model import edModel
-from .nn_funcs import gw_loss, knn, nlma_loss, uc_loss  # noqa
+from .nn_funcs import gw_loss, knn_dist, knn_sim, nlma_loss, uc_loss  # noqa
 from .utilities import time_logger, transfer_accuracy, uc_visualize
 
 
 class ComManDo(uc.UnionCom):
-    """Adaptation of https://github.com/caokai1073/UnionCom by caokai1073"""
+    """
+    Adaptation of https://github.com/caokai1073/UnionCom by caokai1073
+
+    P: Correspondence prior matrix
+    PF_Ratio: Ratio of priors:assumed correspondence; .5 is equal
+    in_place: Whether to do the calculation in place.  Will save memory but may
+        alter original data
+    """
     def __init__(
         self,
-        aligned_idx=None,
-        aligned_sample_pct=None,
+        P=None,
+        PF_Ratio=1,
         in_place=False,
         **kwargs
     ):
-        self.aligned_idx = aligned_idx
-        self.aligned_sample_pct = aligned_sample_pct
+        self.P = P
+        self.PF_Ratio = PF_Ratio
         self.in_place = in_place
-
-        if self.aligned_idx is not None:
-            assert len(self.aligned_idx[0]) == len(self.aligned_idx[1]), (
-                '``aligned_idx`` must be of the form ((n), (n)).'
-            )
 
         if 'project_mode' not in kwargs:
             kwargs['project_mode'] = 'nlma'
@@ -274,19 +276,25 @@ class ComManDo(uc.UnionCom):
         assert len(W) == 2, 'Currently only compatible with 2 modalities.'
 
         # Default vars
-        if self.aligned_idx is None:
+        if self.P is None:
             # If not given, assume total alignment iff datasets are same size
             if self.row[0] == self.row[1]:
-                self.aligned_idx = (range(self.row[0]), range(self.row[1]))
+                self.P = np.eye(self.row[0])
             else:
-                self.aligned_idx = ((), ())
-        if self.aligned_sample_pct is None:
-            self.aligned_sample_pct = max(
-                len(self.aligned_idx[i])/self.row[i] for i in range(self.dataset_num)
-            )
+                self.P = np.zeros((self.row[0], self.row[1]))
+
+        if (self.P - np.eye(self.row[0])).sum() == 0:
+            self.perfect_alignment = True
+        else:
+            self.perfect_alignment = False
+
+        self.P = torch.Tensor(self.P).float().to(self.device)
+        self.F = W[0][1]
 
         # Tuning
         # self.epoch_DNN = 500
+        # self.batch_size = 6
+        # self.batch_size = 177
         # self.lr = .01
 
         timer = time_logger()
@@ -297,8 +305,7 @@ class ComManDo(uc.UnionCom):
             # Cosine Similarity
             sim = (
                 torch.mm(a, torch.t(b))
-                / a.norm(dim=1).reshape(-1, 1)
-                / b.norm(dim=1).reshape(1, -1)
+                / (a.norm(dim=1).reshape(-1, 1) * b.norm(dim=1).reshape(1, -1))
             )
             return sim, 1-sim
 
@@ -321,8 +328,6 @@ class ComManDo(uc.UnionCom):
         if len_dataloader == 0:
             len_dataloader = 1
             self.batch_size = np.max(self.row)
-        num_aligned = int(self.aligned_sample_pct * self.batch_size)
-        num_unaligned = self.batch_size - num_aligned
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
@@ -331,62 +336,78 @@ class ComManDo(uc.UnionCom):
                 batch_loss = 0
 
                 # Random samples
-                random_aligned = np.random.randint(
-                    0, len(self.aligned_idx[0]), num_aligned
-                )
-                random_unaligned = [
-                    np.random.randint(0, self.row[i], num_unaligned)
+                if self.perfect_alignment:
+                    set_rand = np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                random_batch = [
+                    set_rand if self.perfect_alignment else
+                    np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                    # np.random.choice(range(self.row[i]), self.batch_size - i, replace=False)
                     for i in range(self.dataset_num)
                 ]
-                random_batch = [
-                    np.concatenate((random_aligned, unaligned))
-                    for unaligned in random_unaligned
-                ]
                 data = [self.dataset[i][random_batch[i]] for i in range(self.dataset_num)]
-                aligned_subset_idx = 2 * (range(num_aligned),)
+
+                # P setup
+                P = self.P[random_batch[0]][:, random_batch[1]]
+                if P.sum() != 0:
+                    P /= P.sum()
 
                 # F setup
-                F = W[0][1][random_batch[0]][:, random_batch[1]]
-                F = knn(F, k=5)
+                F = self.F[random_batch[0]][:, random_batch[1]]
+
+                # KEY PART FOR ACC
+                # Use KNN, needs to be adapted to diff num samples
+                F = knn_dist(F) if self.perfect_alignment else knn_sim(F)
                 F = torch.from_numpy(F).float().to(self.device)
+
                 F_inv = 1 - F
                 F /= F.sum()
                 F_inv /= F_inv.sum()
                 timer.log('Get subset samples')
 
+                # Aggregate correspondence
+                corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F
+
                 # Run model
-                embedded, reconstructed = self.model(*data, aligned_idx=aligned_subset_idx)
+                embedded, reconstructed = self.model(*data, corr=corr)
                 timer.log('Run model')
 
                 # Reconstruction error
-                reconstruction_diff = [reconstructed[i] - data[i] for i in range(self.dataset_num)]
-                reconstruction_diff = torch.cat(reconstruction_diff, dim=1).square().sum()
-                batch_loss += 1e-3 * reconstruction_diff
+                reconstruction_diff = sum(
+                    (reconstructed[i] - data[i]).square().sum()
+                    for i in range(self.dataset_num)
+                )
+                reconstruction_loss = 1e-3 * reconstruction_diff
+                batch_loss += reconstruction_loss
                 timer.log('Reconstruction loss')
 
                 # Difference
                 csim, cdiff = sim_dist_func(embedded[0], embedded[1])
 
-                # Alignment error
-                batch_loss += 2e-4 * cdiff.diag()[:num_aligned].sum()
+                # Alignment loss
+                alignment_loss = 2e-4 * cdiff[P > 0].sum()
+                batch_loss += alignment_loss
                 timer.log('Aligned loss')
 
-                # Cross error using F
+                # Cross loss using F
                 weighted_F_cdiff = cdiff * F
-                batch_loss += 1e+1 * weighted_F_cdiff.sum()
+                cross_loss = 1e+1 * weighted_F_cdiff.sum()
+                batch_loss += cross_loss
                 timer.log('F-cross loss')
 
-                # Inverse cross error using F
+                # Inverse cross loss using F
                 weighted_F_inv_csim = csim * F_inv
-                batch_loss += 3e+0 * weighted_F_inv_csim.sum()
+                inv_cross_loss = 3e+0 * weighted_F_inv_csim.sum()
+                batch_loss += inv_cross_loss
                 timer.log('F-inv-cross loss')
 
                 # Debug print losses
-                # print(reconstruction_diff)
-                # print(cdiff.sum())
-                # print(weighted_F_cdiff.sum())
-                # print(weighted_F_inv_csim.sum())
-                # print()
+                # if epoch == self.epoch_DNN - 1:
+                #     print()
+                #     print(reconstruction_loss)
+                #     print(alignment_loss)
+                #     print(cross_loss)
+                #     print(inv_cross_loss)
+                #     print()
 
                 # Record loss
                 epoch_loss += batch_loss / len_dataloader
@@ -403,7 +424,11 @@ class ComManDo(uc.UnionCom):
                 # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
 
         self.model.eval()
-        integrated_data, _ = self.model(*self.dataset, aligned_idx=self.aligned_idx)
+        corr_P = self.P / self.P.sum()
+        corr_F = torch.from_numpy(knn_sim(self.F)).float().to(self.device)
+        corr_F /= corr_F.sum()
+        corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
+        integrated_data, _ = self.model(*self.dataset, corr=corr)
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")

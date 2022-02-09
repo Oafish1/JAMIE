@@ -1,3 +1,13 @@
+# 3.1.0
+- `aligned_idx` is now `P`, a matrix filled with priors
+- Combined `P` and `F` matrices into aggregate `corr`
+- Changes improved unaligned performance significantly
+- Slightly reduced aligned performance
+- Re-ran joint embedding notebooks
+- Fixed bug in `knn` calculation
+- Added `perfect_alignment` toggle for separate knn graph calculation method
+- Cleaned up no-longer-used files
+
 # 3.0.0
 - Add evaluation graph for alignment assumptions
 - Merge notebooks
