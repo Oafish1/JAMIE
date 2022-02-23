@@ -37,6 +37,7 @@ setup(
             'jupyterlab',
             'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD',
             'pandas',
+            'seaborn',
         ],
     },
 	tests_require=['pytest'],

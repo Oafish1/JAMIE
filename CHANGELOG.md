@@ -1,3 +1,7 @@
+# 3.2.0
+- Added `test_label_dist` to show inter-cell distance
+- Re-run and revise notebooks, especially for `modality prediction`
+
 # 3.1.0
 - `aligned_idx` is now `P`, a matrix filled with priors
 - Combined `P` and `F` matrices into aggregate `corr`

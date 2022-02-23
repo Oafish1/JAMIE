@@ -482,7 +482,11 @@ class ComManDo(uc.UnionCom):
             distances = self.distance_function(self.dataset[i])
             self.dist.append(distances)
 
-    def test_closer(self, integrated_data, distance_metric=None):
+    def test_closer(
+        self,
+        integrated_data,
+        distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+    ):
         """Test fraction of samples closer than the true match"""
         # ASDF: 3+ datasets and non-aligned data
         assert len(integrated_data) == 2, 'Two datasets are supported for FOSCTTM'
@@ -502,6 +506,30 @@ class ComManDo(uc.UnionCom):
         foscttm = raw_count_closer / (2 * size**2)
         print(f'foscttm: {foscttm}')
         return foscttm
+
+    def test_label_dist(
+        self,
+        integrated_data,
+        datatype,
+        distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+    ):
+        """Test average distance by label"""
+        # ASDF: 3+ datasets
+        assert len(integrated_data) == 2, 'Two datasets are supported for ``label_dist``'
+
+        if distance_metric is None:
+            distance_metric = self.distance_function
+        data = np.concatenate(integrated_data, axis=0)
+        labels = np.concatenate(datatype)
+
+        # Will double-count aligned sample
+        average_representation = {}
+        for label in np.unique(labels):
+            average_representation[label] = np.average(data[labels == label, :], axis=0)
+        dist = distance_metric(np.array(list(average_representation.values())))
+        print(f'Inter-label distances ({list(average_representation.keys())}):')
+        print(dist)
+        return average_representation.keys(), dist
 
     def test_LabelTA(self, integrated_data, datatype):
         """Modified version of UnionCom ``test_LabelTA`` to return acc"""
