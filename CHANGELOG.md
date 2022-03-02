@@ -1,3 +1,9 @@
+# 3.3.0
+- Added `generate_figure` to more concisely show results
+- Small changes in several algorithms to mute output
+- Renamed `joint_embedding` folder to `general_analysis`
+- Re-ran notebooks
+
 # 3.2.0
 - Added `test_label_dist` to show inter-cell distance
 - Re-run and revise notebooks, especially for `modality prediction`

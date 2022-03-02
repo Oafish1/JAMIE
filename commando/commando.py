@@ -512,6 +512,7 @@ class ComManDo(uc.UnionCom):
         integrated_data,
         datatype,
         distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+        verbose=True,
     ):
         """Test average distance by label"""
         # ASDF: 3+ datasets
@@ -527,9 +528,10 @@ class ComManDo(uc.UnionCom):
         for label in np.unique(labels):
             average_representation[label] = np.average(data[labels == label, :], axis=0)
         dist = distance_metric(np.array(list(average_representation.values())))
-        print(f'Inter-label distances ({list(average_representation.keys())}):')
-        print(dist)
-        return average_representation.keys(), dist
+        if verbose:
+            print(f'Inter-label distances ({list(average_representation.keys())}):')
+            print(dist)
+        return np.array(list(average_representation.keys())), dist
 
     def test_LabelTA(self, integrated_data, datatype):
         """Modified version of UnionCom ``test_LabelTA`` to return acc"""
