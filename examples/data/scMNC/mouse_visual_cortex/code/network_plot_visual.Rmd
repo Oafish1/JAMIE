@@ -1,0 +1,45 @@
+---
+title: "Network Plot Example"
+author: "Jiawei Huang"
+output: html_document
+---
+
+```{r}
+load(file = "../data/visual_data_filtered.rda")
+gdata = read.csv("../data/geneExp.csv",header = T,check.names = FALSE)
+diff_edata = read.csv("../data/diff_edata.csv",header = T,stringsAsFactors = F)
+diff_genes = read.csv("../data/diff_genes.csv",header = T,stringsAsFactors = F)
+clustering = read.csv("../data/efeature_NMA.csv",header = T,stringsAsFactors = F)
+cellnames = c("gene",rownames(edata))
+gdata = gdata[!duplicated(gdata$gene),cellnames]
+rownames(gdata) = gdata[,1];gdata = gdata[,-1]
+cellnames = rownames(edata)
+meta$genotype = sapply(meta$t_type,function(x){na.omit(unlist(strsplit(x, " ")))[1]})
+t_type = sapply(cellnames,FUN = function(x){meta$genotype[meta$transcriptomics_sample_id==x]})
+n = nrow(edata)
+```
+
+```{r}
+cl1_genes = diff_genes$gene[diff_genes$cluster == "Cluster 1"]
+net_gdata = gdata[c("Irf5","Spi1","Atf3"),]
+head(net_gdata)
+net_gdata = data.frame(t(log10(net_gdata+1)))
+#cor(net_gdata[net_gdata$Irf5>0 & net_gdata$Spi1>0 & net_gdata$Atf3>0,])
+cor(net_gdata)
+```
+
+```{r}
+#Figure S7
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+p1 = ggplot(net_gdata[diff_genes$cluster == "Cluster 1",],aes(x=Irf5,y=Atf3)) + geom_point(col = "#0C2D48",alpha = 0.6,size = 2) + theme_minimal() + stat_cor(method="pearson") + ggtitle("cluster1 visual")
+p2 = ggplot(net_gdata[diff_genes$cluster == "Cluster 1",],aes(x=Spi1,y=Atf3)) + geom_point(col = "#0C2D48",alpha = 0.6,size = 2) + theme_minimal() + stat_cor(method="pearson")+ ggtitle("cluster1 visual")
+p3 = ggplot(net_gdata,aes(x=Irf5,y=Atf3)) + geom_point(col = "#0C2D48",alpha = 0.6,size = 2) + theme_minimal() + stat_cor(method="pearson")+ ggtitle("all cells visual")
+p4 = ggplot(net_gdata,aes(x=Spi1,y=Atf3)) + geom_point(col = "#0C2D48",alpha = 0.6,size = 2) + theme_minimal() + stat_cor(method="pearson")+ ggtitle("all cells visual")
+p = grid.arrange(p1, p2,p3,p4, nrow = 2,ncol = 2)
+#ggsave(file=paste0("../figure/network_Atf3.pdf"), p,width = 20,height = 20, units = "cm")
+```
+
+
+

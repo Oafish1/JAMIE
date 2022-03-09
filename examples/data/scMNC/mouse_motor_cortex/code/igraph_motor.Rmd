@@ -1,0 +1,27 @@
+---
+title: "igraph_network"
+author: "Jiawei Huang"
+output: html_document
+---
+
+```{r}
+library(igraph)
+pv_grn=read.csv('../data/network_motor.csv')
+
+for (i in 1:5){
+  #pdf(paste0("../figure/network/cluster",i,".pdf"),width = 12,height = 12)
+  pv_grn_clu = pv_grn[pv_grn$cluster == paste0("cluster",i) & pv_grn$Genie3Weight > 0.01,]
+  grn=graph.edgelist(as.matrix(pv_grn_clu[,1:2]),directed=T)
+  V(grn)$color='yellow'
+  V(grn)$color[V(grn)$name%in%pv_grn$TF]='cyan'
+  layouts=grep("^layout_", ls("package:igraph"), value=TRUE)[-1]
+  grn_layout=layout_with_fr(grn)
+  plot.igraph(grn,layout=grn_layout,edge.color='black',vertex.frame.color="grey",
+              vertex.shape='circle',#vertex.label=NA,
+              vertex.label.cex=0.75,vertex.size=7,vertex.label.degree=pi/2,label.color='black',
+              edge.width=0.25,edge.arrow.size=0.25, edge.arrow.width=0.25)
+  legend('topleft',c('Target gene','TF'),fill=c('yellow','cyan'),bty='n')
+  #dev.off()
+}
+```
+

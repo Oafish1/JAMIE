@@ -1,3 +1,13 @@
+# 3.4.0
+- `generate_figure`
+ - Added 3D plotting capability
+ - Various formatting changes and style options
+ - Silhouette coefficient visualizations
+ - More modality prediction comparisons
+- Add MMD-MA comparison
+- Add scMNC data
+- Reruns
+
 # 3.3.0
 - Added `generate_figure` to more concisely show results
 - Small changes in several algorithms to mute output

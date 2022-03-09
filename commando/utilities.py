@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+import torch
+import torch.nn as nn
 import umap
 from unioncom.test import transfer_accuracy  # noqa
 
@@ -199,3 +201,40 @@ def uc_visualize(data, data_integrated, datatype=None, mode=None):
 
     plt.tight_layout()
     plt.show()
+
+
+def ensure_list(x):
+    if not isinstance(x, np.ndarray):
+        return [x]
+    return x
+
+
+class SimpleModel(nn.Module):
+    """Thin, simple NN model"""
+    def __init__(self, input_dim, output_dim, hidden_dim=10, p=0.6):
+        super().__init__()
+
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=p)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        """Forward pass for the model"""
+        return self.fc2(self.dropout(self.fc1(x)))
+
+
+def predict_nn(source, target, epochs=200, batches=10):
+    model = SimpleModel(source.shape[1], target.shape[1])
+    optimizer = torch.optim.AdamW(model.parameters())
+    criterion = nn.MSELoss()
+    batch_size = int(len(source)/batches)
+
+    for epoch in range(epochs):
+        for _ in range(batches):
+            idx = np.random.choice(range(len(source)), batch_size, replace=False)
+            optimizer.zero_grad()
+            logits = model(source[idx])
+            loss = criterion(logits, target[idx])
+            loss.backward()
+            optimizer.step()
+    return model(source).detach().cpu().numpy()

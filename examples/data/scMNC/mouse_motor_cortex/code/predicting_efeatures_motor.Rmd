@@ -1,0 +1,77 @@
+---
+title: "Predicting e-features"
+author: "Jiawei Huang"
+output: html_document
+---
+
+
+#read data
+
+```{r}
+load(file = "../data/motor_data_filtered.rda")
+diff_edata = read.csv("../data/diff_edata.csv",header = T,stringsAsFactors = F)
+diff_genes = read.csv("../data/diff_genes.csv",header = T,stringsAsFactors = F)
+clustering = read.csv("../data/efeatures_NMA.csv",header = T,stringsAsFactors = F)
+
+cellnames = rownames(edata)
+n = nrow(edata)
+```
+
+# predict
+
+cluster 1 upstroke-downstroke-ratio-long-square 
+
+```{r}
+library(ggplot2)
+Pred_R2 = c()
+train_R2 = c()
+set.seed(1)
+train_ind = sample(1:n,n*0.9,replace = FALSE)
+for (j in 2:5){
+  pred_genes = data.frame(log10(t(gdata[diff_genes$gene[diff_genes$cluster == paste0("Cluster ",j) & diff_genes$p_val_adj<0.05],])+1))
+  pred_edata = edata[,diff_edata$diff_e_feature[diff_edata$cluster == j]]
+  for (i in 1:ncol(pred_edata)){
+    feature = colnames(pred_edata)[i]
+    pred = cbind(pred_genes,pred_edata[,i])
+    colnames(pred)[length(colnames(pred))] = "y"
+    train_pred = pred[train_ind,]
+    test_pred = pred[-train_ind,]
+    fiti = lm(y~.,data = pred)
+    Pred_R2i = 1- sum((predict.lm(fiti,test_pred)-test_pred$y)^2)/sum((test_pred$y - mean(test_pred$y))^2)
+    Pred_R2 = c(Pred_R2,Pred_R2i)
+    train_R2 = c(train_R2,(summary(fiti)$r.squared))
+    #plot
+    pred_df <- data.frame(x = predict.lm(fiti,test_pred),y = test_pred$y)
+    lim_range = -min(pred_df)+max(pred_df)
+    scatter = ggplot(pred_df, aes(x, y))+geom_point(col = "#0C2D48",alpha = 0.6,size = 2)+xlim(min(pred_df),max(pred_df)) + 
+      ylim(min(pred_df),max(pred_df)) + theme_minimal() + 
+      labs(y="observed",x="predicted")
+    #ggsave(file=paste0("../figure/pred/",feature,".png"), scatter,width = 10,height = 10, units = "cm")
+  }
+}
+pred_res = data.frame(
+  e_feature = diff_edata$diff_e_feature,
+  cluster = diff_edata$cluster,
+  p_val_adj = diff_edata$p_val_adj,
+  Pred_R2 = Pred_R2,
+  train_R2 = train_R2
+)
+#write.csv(pred_res,"../data/pred_res.csv",row.names=F)
+```
+
+```{r}
+#Figure 4C
+pred_res$e_feature = sapply(pred_res$e_feature, gsub, pattern = ".", replacement = " ", fixed = TRUE)
+library(RColorBrewer)
+p<-ggplot(data=pred_res[!duplicated(pred_res$e_feature) & pred_res$Pred_R2>0.5,], 
+          aes(x = reorder(e_feature,Pred_R2), y=Pred_R2)) + labs(y="enrichment")+
+  geom_bar(stat="identity",width=0.4,fill = brewer.pal(6,"Spectral")[5],alpha = 0.8)+ theme_minimal() + 
+  labs(y="test R square (>0.5)",x="") +
+  coord_flip() + 
+  theme(axis.text = element_text(size=12.5,lineheight=.8),
+        axis.title = element_text(size=11,face = "bold")) 
+p
+#ggsave(file=paste0("../figure/pred_R.png"), p)
+```
+
+

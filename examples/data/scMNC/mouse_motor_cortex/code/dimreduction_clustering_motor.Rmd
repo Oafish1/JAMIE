@@ -1,0 +1,376 @@
+---
+title: "Plot_dimreducation_clustering"
+author: "Jiawei Huang"
+output: html_document
+---
+
+### Essential packages
+
+```{r,include=FALSE}
+library(plyr)
+library(reshape2)
+library(ManiNetCluster)
+library(ggplot2)
+library(RColorBrewer)
+library(cowplot)
+library(stringr)
+library(Seurat)
+library(dplyr)
+library(corrplot)
+library(readxl)
+library(cluster)
+
+Dim_red = function(edata,gdata,method,class,cellnames,d,k_NN,k_medoid){
+  #e-feature
+  X = apply(edata,2,scale)
+  #g-feature
+  Y=t(log2(gdata+1))
+  #Dim_red
+  XY_corr=Correspondence(matrix=diag(nrow(X)))
+  df=ManiNetCluster(X,Y,nameX='Ephys',nameY='Expr',corr=XY_corr,d=d,
+                    method=method,k_NN=k_NN,k_medoids=k_medoid)
+  df$ttype = rep(class,2)
+  df$cellnames = rep(unlist(cellnames),2)
+  return(df[,-1])
+}
+
+load(file = "../data/motor_data_filtered.rda")
+cellnames = rownames(edata)
+t_type = meta$`RNA family`[match(cellnames,meta$Cell)]
+t_type_spec = meta$`RNA type`[match(cellnames,meta$Cell)]
+n = nrow(edata)
+method = c('linear manifold','cca','manifold warping','nonlinear manifold aln','nonlinear manifold warp')
+dist =c()
+```
+
+### Boxplot for pairwise distance
+
+```{r}
+for (i in 1:5){
+  res = Dim_red(edata,gdata,method = method[i],class = t_type,cellnames =cellnames,d=3L,k_NN=2L,k_medoid=5L)
+  res_e.sd = apply(res[res$data=="Ephys",2:4],2,scale)
+  res_t.sd = apply(res[res$data=="Expr",2:4],2,scale)
+  for (k in 1:n){
+    dist = c(dist,sqrt(sum((res_e.sd[k,]-res_t.sd[k,])^2)))
+  }
+}
+
+### PCA ###
+#clustering only use gdatas
+PCA_res_t = prcomp(t(log10(gdata+1)),scale=T,rank=3,retx=T)$x
+PCA_res_t = data.frame(Val0 = as.numeric(PCA_res_t[,1]),Val1 = as.numeric(PCA_res_t[,2]),Val2 = as.numeric(PCA_res_t[,3]))
+PCA_res_t.sd = apply(PCA_res_t[,1:3],2,scale)
+#clustering only use edata
+PCA_res_e = prcomp(edata,scale=T,rank=3,retx=T)$x
+PCA_res_e = data.frame(Val0 = as.numeric(PCA_res_e[,1]),Val1 = as.numeric(PCA_res_e[,2]),Val2 = as.numeric(PCA_res_e[,3]))
+PCA_res_e.sd = apply(PCA_res_e[,1:3],2,scale)
+for (k in 1:n){
+  dist = c(dist,sqrt(sum((PCA_res_e.sd[k,1:3]-PCA_res_t.sd[k,1:3])^2)))
+}
+
+#boxplot Figure S2B
+distmat = data.frame(matrix(as.numeric(dist),nrow = nrow(edata)))
+colnames(distmat) = c('LM','CCA','MW','NMA','NMW',"PCA")
+distmat = distmat[,c(-5)]
+distmat = melt(distmat,variable.name = "Method", value.name = "Pairwise distance between g & e features")
+boxplot(`Pairwise distance between g & e features`~Method,data=distmat,
+        ylab="Pairwise distance between G & E features", xlab="",outline =F,col ="white")
+tapply(distmat$`Pairwise distance between g & e features`,INDEX = distmat$Method,FUN = mean)
+```
+
+
+### Alignment using NMA,CCA and PCA
+
+```{r}
+#model
+### MA ###
+NMA_res = Dim_red(edata,gdata,method = method[4],class = t_type, cellnames =cellnames,d=20L,k_NN=2L,k_medoid=5L)
+NMA_res_e = NMA_res[NMA_res$data=="Ephys",]
+NMA_res_t= NMA_res[NMA_res$data=="Expr",]
+### CCA ###
+CCA_res = Dim_red(edata,gdata,method = method[2],class = t_type,cellnames =cellnames,d=20L,k_NN=2L,k_medoid=5L)
+CCA_res_e = CCA_res[CCA_res$data=="Ephys",]
+CCA_res_t= CCA_res[CCA_res$data=="Expr",]
+### PCA ###
+#clustering only use gdatas
+PCA_res_t = prcomp(t(log10(gdata+1)),scale=T,rank=20,retx=T)$x
+PCA_res_t = data.frame(Val0 = as.numeric(PCA_res_t[,1]),Val1 = as.numeric(PCA_res_t[,2]),Val2 = as.numeric(PCA_res_t[,3]))
+#clustering only use edata
+PCA_res_e = prcomp(edata,scale=T,rank=20,retx=T)$x
+PCA_res_e = data.frame(Val0 = as.numeric(PCA_res_e[,1]),Val1 = as.numeric(PCA_res_e[,2]),Val2 = as.numeric(PCA_res_e[,3]))
+PCA_res = rbind(PCA_res_e[,1:3],PCA_res_t[,1:3])
+head(NMA_res)
+#write.csv(NMA_res_e,"../data/efeatures_NMA_20.csv",row.names = FALSE)
+#write.csv(NMA_res_t,"../data/geneExp_NMA_20.csv",row.names = FALSE)
+#Fig S2A
+library(plot3D)
+#NMA
+#png(filename = paste0("figure/","eg_patch_motor_(NMA).png"),width = 500, height = 500)
+NMA_plot = -rbind(apply(NMA_res[1:n,2:4],2,scale),apply(NMA_res[(n+1):(2*n),2:4],2,scale))
+NMA_plot[1:n,1] = NMA_plot[1:n,1] + 0.5
+points3D(x=NMA_plot[,1], y=NMA_plot[,2], z=NMA_plot[,3],pch = 19,cex=0.8,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+         xlab = "",ylab = "",zlab = "",box=T, axes=F,
+         colvar = as.numeric(mapvalues(NMA_res$data,names(table(NMA_res$data)),1:2)),col = alpha(brewer.pal(6,"Spectral")[c(1,6)],c(0.8,0.8)),
+         colkey = F)
+#dev.off()
+#CCA
+#png(filename = paste0("figure/","eg_patch_motor_(CCA).png"),width = 500, height = 500)
+CCA_plot = rbind(apply(CCA_res[1:n,2:4],2,scale),apply(CCA_res[(n+1):(2*n),2:4],2,scale))
+CCA_plot[1:n,1] = CCA_plot[1:n,1] + 0.5
+points3D(x=CCA_plot[,1], y=CCA_plot[,2], z=CCA_plot[,3],pch = 19,cex=0.8,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+         xlab = "",ylab = "",zlab = "",box=T, axes=F,
+         colvar = as.numeric(mapvalues(CCA_res$data,names(table(CCA_res$data)),1:2)),col = alpha(brewer.pal(6,"Spectral")[c(1,6)],c(0.8,0.8)),
+         colkey = F)
+#dev.off()
+#PCA
+#png(filename = paste0("figure/","eg_patch_motor_(PCA).png"),width = 500, height = 500)
+PCA_plot = rbind(apply(PCA_res_e[,1:3],2,scale),apply(PCA_res_t[,1:3],2,scale))
+PCA_plot[1:n,1] = PCA_plot[1:n,1] + 0.5
+points3D(x=PCA_plot[,1], y=PCA_plot[,2], z=PCA_plot[,3],pch = 19,cex=0.8,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+         xlab = "",ylab = "",zlab = "",box=T, axes=F,
+         colvar = as.numeric(mapvalues(NMA_res$data,names(table(NMA_res$data)),1:2)),col = alpha(brewer.pal(6,"Spectral")[c(1,6)],c(0.8,0.8)),
+         colkey = F)
+#dev.off()
+```
+
+### Refering to t-types
+
+```{r}
+#Figure S2C,3A
+#table for t-types
+table(t_type)
+#"#E41A1C" Vip red 
+#"#377EB8" Sst blue
+#"#984EA3" Sncg purple
+#"#FF7F00" Pvalb1 orange
+#"#FFFF33" Lamp5 yellow
+#"#4DAF4A" Serpinf1 & exc t-types green
+col = alpha(c("#E41A1C","#377EB8","#984EA3","#FF7F00","#FFFF33","#a9a9a9"),0.8)
+colvar = as.numeric(mapvalues(t_type,c("Vip","Sst","Sncg","Pvalb","Lamp5","CT","ET","IT","NP"),c(1:5,rep(6,4))))
+#t-type distribution (Fig 2A)
+#e-features NMA
+#png(filename = paste0("../figure/","ttype_visual_(NMA).png"),width = 500, height = 500)
+points3D(x=-NMA_res_e$Val0, y=-NMA_res_e$Val1, z=-NMA_res_e$Val2,pch = 19,cex=0.8,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+         xlab = "",ylab = "",zlab = "",axes =F,
+         colvar = colvar,col=col,
+         colkey = F)
+#dev.off()
+#e-features PCA
+#png(filename = paste0("../figure/","ttype_visual_(PCA).png"),width = 500, height = 500)
+points3D(x=PCA_res_e$Val0, y=PCA_res_e$Val1, z=PCA_res_e$Val2,pch = 19,cex=0.8,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+         xlab = "",ylab = "",zlab = "",axes =F,
+         colvar = colvar,col=col,
+         colkey = F)
+#dev.off()
+#e-features CCA
+#png(filename = paste0("../figure/","ttype_visual_(CCA).png"),width = 500, height = 500)
+points3D(x=CCA_res_e$Val0, y=CCA_res_e$Val1, z=CCA_res_e$Val2,pch = 19,cex=0.8,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+         xlab = "",ylab = "",zlab = "",axes =F,
+         colvar = colvar,col=col,
+         colkey = F)
+#dev.off()
+#png(filename = paste0("figure/","legend.png"),width = 500, height = 500)
+colkey(at = 1:6,clim = c(0.5,6.5), rev(col),clab = "t-type",
+              addlines = F, length = 0.5, width = 0.5,
+              labels = c("Excitatory","Lamp5","Pvalb","Sncg","Sst","Vip"))
+#dev.off()
+# #t-type distribution (Fig S2)
+# #gene NMA
+# points3D(x=-NMA_res_t$Val0, y=-NMA_res_t$Val1, z=-NMA_res_t$Val2,pch = 19,cex=0.5,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+#          xlab = "",ylab = "",zlab = "",
+#          colvar = as.numeric(mapvalues(t_type,names(table(t_type)),1:6)),col =alpha(brewer.pal(6,"Set1"),0.8),
+#          colkey = F)
+# #gene PCA
+# points3D(x=PCA_res_t$Val0, y=PCA_res_t$Val1, z=PCA_res_t$Val2,pch = 19,cex=0.5,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+#          xlab = "",ylab = "",zlab = "",
+#          colvar = as.numeric(mapvalues(t_type,names(table(t_type)),1:6)),col =alpha(brewer.pal(6,"Set1"),0.8),
+#          colkey = F)
+# #gene CCA
+# points3D(x=CCA_res_t$Val0, y=CCA_res_t$Val1, z=CCA_res_t$Val2,pch = 19,cex=0.5,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+#          xlab = "",ylab = "",zlab = "",
+#          colvar = as.numeric(mapvalues(t_type,names(table(t_type)),1:6)),col =alpha(brewer.pal(6,"Set1"),0.8),
+#          colkey = F)
+```
+
+```{r}
+library("viridis") 
+edata_sst = edata[t_type == "Sst",]
+gdata_sst = gdata[,t_type == "Sst"]
+t_type_spec_sst = t_type_spec[t_type == "Sst"]
+cellnames_sst = cellnames[t_type == "Sst"]
+sub_types = c("others","Sst Calb","Sst Chodl","Sst Hpse","Sst Myh8","Sst Tac2")
+colvar = rep(1,length(t_type_spec_sst))
+colvar[grep("Sst Calb",t_type_spec_sst)] = 2
+colvar[grep("Sst Chodl",t_type_spec_sst)] = 3
+colvar[grep("Sst Hpse",t_type_spec_sst)] = 4
+colvar[grep("Sst Myh8",t_type_spec_sst)] = 5
+colvar[grep("Sst Tac2",t_type_spec_sst)] = 6
+col = alpha(c("#a9a9a9",viridis(5)),c(0.5,rep(0.8,5)))
+
+sub_types = names(table(t_type_spec_sst))
+colvar = as.numeric(mapvalues(t_type_spec_sst,sub_types,1:length(sub_types)))
+col = viridis(length(sub_types))
+```
+
+```{r}
+#Figure 3B 
+### MA ###
+NMA_res_sst = Dim_red(edata_sst,gdata_sst,method = method[4],class = t_type_spec_sst,cellnames =cellnames_sst,d=3L,k_NN=2L,k_medoid=5L)
+NMA_res_e_sst = NMA_res_sst[NMA_res_sst$data=="Ephys",]
+NMA_res_t_sst = NMA_res_sst[NMA_res_sst$data=="Expr",]
+#png(filename = paste0("figure/sub-t-types-motor/","sst sub-t-types.png"),width=500,height=500)
+points3D(x=NMA_res_e_sst$Val0, y=-NMA_res_e_sst$Val1, z=-NMA_res_e_sst$Val2,
+         pch = 19,cex=1,bty="g",ticktype = "detailed", theta = 220, phi = 10,
+         xlab = "",ylab = "",zlab = "",axes=F,
+         #main = "SST sub-t-types motor (NMA)",
+         colvar = colvar,
+         col = col,
+         colkey = F)
+#dev.off()
+#png(filename = paste0("figure/sub-t-types-motor/","legend_sub.png"),width=700,height=700)
+colkey(at = 1:length(sub_types),clim = c(0.5,(length(sub_types)+0.5)),
+       col,clab = "sub-t-types", 
+       addlines = F, length = 0.5, width = 0.5,cex.axis =0.9,
+       labels = sub_types)
+#dev.off()
+```
+
+### e-feature tragetory
+
+```{r}
+#Figure 3D
+for (i in colnames(edata)){
+  #png(filename = paste0("figure/e-tragetory-main/",i,".png"))
+  points3D(x=NMA_res_e$Val0, y=-NMA_res_e$Val1, z=NMA_res_e$Val2,pch = 19,
+           cex=1,bty="g",ticktype = "detailed", theta = 40, phi = 10,
+           xlab = "",ylab = "",zlab = "",clab=i,
+           #main = paste0(i," visual main"),
+           colvar = edata[,i],
+           col = colorRampPalette(c("white", "red", "black"))(n),
+           colkey=T)
+  #dev.off()
+  #png(filename = paste0("figure/e-tragetory-sstsub/",i,".png"))
+  points3D(x=NMA_res_e_sst$Val0, y=-NMA_res_e_sst$Val1, z=-NMA_res_e_sst$Val2,
+           pch = 19,cex=1,bty="g",ticktype = "detailed", theta = 130, phi = 10,
+           xlab = "",ylab = "",zlab = "",clab=i,
+           #main = paste0(i," visual sst sub"),
+           colvar = edata_sst[,i],
+           col = colorRampPalette(c("white", "red", "black"))(nrow(edata_sst)),
+           colkey = T)
+  #dev.off()
+}
+```
+
+
+
+### Clustering
+
+```{r}
+library(ClusterR)
+#gmm optimal cluster (Fig S4)
+opt_gmm = Optimal_Clusters_GMM(cbind(NMA_res[1:n,2:4],NMA_res[(n+1):(2*n),2:4]), max_clusters = 10,
+                               criterion = "BIC",dist_mode = "eucl_dist", seed_mode = "random_subset",
+                               km_iter = 50, em_iter = 100, var_floor = 1e-10,plot_data = T)
+#NMA cluster
+gmm = GMM(cbind(NMA_res[1:n,2:4],NMA_res[(n+1):(2*n),2:4]), 5, dist = "eucl_dist", "random_subset", 10, 50,seed=1)
+gmm_cluster = predict_GMM(cbind(NMA_res[1:n,2:4],NMA_res[(n+1):(2*n),2:4]),
+                          gmm$centroids, gmm$covariance_matrices, gmm$weights)$cluster_labels +1
+#CCA cluster
+gmm_cca = GMM(cbind(CCA_res[1:n,2:4],CCA_res[(n+1):(2*n),2:4]), 5, dist = "eucl_dist", "random_subset", 10, 50,seed=1)
+gmm_cluster_cca = predict_GMM(cbind(CCA_res[1:n,2:4],CCA_res[(n+1):(2*n),2:4]),
+                          gmm_cca$centroids, gmm_cca$covariance_matrices, gmm_cca$weights)$cluster_labels +1
+#PCA cluster
+gmm_pca = GMM(cbind(PCA_res_e,PCA_res_t), 5, dist = "eucl_dist", "random_subset", 10, 50,seed=1)
+gmm_cluster_pca = predict_GMM(cbind(PCA_res_e,PCA_res_t),
+                              gmm_pca$centroids, gmm_pca$covariance_matrices,gmm_pca$weights)$cluster_labels +1
+
+NMA_res_e = cbind(NMA_res_e,gmm_cluster)
+NMA_res_t = cbind(NMA_res_t,gmm_cluster)
+write.csv(NMA_res_e,"../data/efeature_NMA.csv",row.names = FALSE)
+write.csv(NMA_res_t,"../data/geneExp_NMA.csv",row.names = FALSE)
+#t-type & cluster (Fig S5)
+NMA_res_e$ttype = mapvalues(NMA_res_e$ttype,c("Vip","Sst","Sncg","Pvalb","Lamp5","CT","ET","IT","NP"),
+                          c("Vip","Sst","Sncg","Pvalb","Lamp5",rep("excitatory",4)))
+group_ref = matrix(0,ncol = 5,nrow = 6)
+rownames(group_ref) = names(table(NMA_res_e$ttype))
+colnames(group_ref) = factor(paste0("Cluster",1:5),levels = paste0("Cluster",1:5))
+for (i in 1:n){
+  group_ref[NMA_res_e[i,]$ttype,gmm_cluster[i]] = group_ref[NMA_res_e[i,]$ttype,gmm_cluster[i]] + 1
+}
+#pdf("figure/corrplot_motor.pdf")
+corrplot(group_ref,tl.col = "black",tl.srt = 45,is.corr = FALSE,cl.lim=c(0,300))
+#dev.off()
+```
+
+
+
+```{r}
+silmat = data.frame(
+  PCA = silhouette(as.numeric(mapvalues(t_type,names(table(t_type)),1:9)), dist = dist(PCA_res_e[,1:3]))[,3],
+  CCA = silhouette(as.numeric(mapvalues(t_type,names(table(t_type)),1:9)), dist = dist(CCA_res_e[,2:4]))[,3],
+  NMA = silhouette(as.numeric(mapvalues(t_type,names(table(t_type)),1:9)), dist = dist(NMA_res_e[,2:4]))[,3]
+)
+
+silmat = melt(silmat,variable.name = "Method", value.name = "Silhouette Value")
+boxplot(`Silhouette Value`~Method,data=silmat,
+        ylab="Silhouette Value", xlab="Cluster",outline =F,col ="white",ylim=c(-1,1))
+tapply(silmat$`Silhouette Value`,INDEX = silmat$Method,mean)
+```
+
+```{r}
+#different expressed genes 
+diffg <- CreateSeuratObject(counts =log10(gdata+1), min.cells = 3, min.features = 200)
+all.genes <- rownames(diffg)
+diffg <- ScaleData(diffg, features = all.genes)
+Idents(diffg) = factor(paste0("Cluster ",gmm_cluster))
+diffg.markers <- FindAllMarkers(diffg, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+top10 <- diffg.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(diffg, features = top10$gene,group.colors = brewer.pal(6,"Dark2")[1:5],angle = 30,size = 5)
+#write.csv(diffg.markers,"../data/diff_genes.csv",row.names = FALSE)
+
+#representive e-features
+diffe <- CreateSeuratObject(counts =abs(t(edata)),min.cells = 1, min.features = 1)
+all.genes <- rownames(diffe)
+diffe <- ScaleData(diffe, features = all.genes)
+Idents(diffe) = factor(gmm_cluster,levels = c(1:5))
+diffe.markers <- FindAllMarkers(diffe, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+#diffe.markers
+#write.csv(diffe.markers,"../data/diff_edata.csv",row.names = FALSE)
+
+# #Fig 2D, S7
+# diffe.markers$`-log10p` = -log10(diffe.markers$p_val_adj)
+# p<-ggplot(data=diffe.markers[diffe.markers$cluster ==1,], aes(x = reorder(factor(stringr::str_wrap(gene,15)),`-log10p`), y=`-log10p`)) + labs(y="enrichment")+
+#   geom_bar(stat="identity",fill = brewer.pal(6,"Spectral")[5],width=0.4)+ theme_minimal() + 
+#   labs(y="-log10(adjustded p value)",x="") +
+#   coord_flip() + 
+#   theme(axis.text = element_text(size=12.5,lineheight=.7),
+#         axis.title = element_text(size=11,face = "bold")) 
+# p
+```
+
+
+```{r}
+#different expressed genes 
+diffg <- CreateSeuratObject(counts =log10(gdata+1), min.cells = 3, min.features = 200)
+all.genes <- rownames(diffg)
+diffg <- ScaleData(diffg, features = all.genes)
+Idents(diffg) = factor(t_type)
+diffg.markers <- FindAllMarkers(diffg, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+top10 <- diffg.markers  %>% group_by(cluster) %>% top_n(n = 10, wt = avg_logFC)
+DoHeatmap(diffg, features = top10$gene,group.colors = brewer.pal(6,"Dark2")[1:5],angle = 30,size = 5)
+#write.csv(diffg.markers,"../data/diff_genes_ttype.csv",row.names = FALSE)
+# for (i in 1:5){
+#   cat("Cluster",i,"\n",diffg.markers$gene[diffg.markers$cluster==paste0("Cluster ",i)],"\n")
+# }
+
+#representive e-features
+diffe <- CreateSeuratObject(counts =abs(t(edata)),min.cells = 1, min.features = 1)
+all.genes <- rownames(diffe)
+diffe <- ScaleData(diffe, features = all.genes)
+Idents(diffe) = factor(t_type)
+diffe.markers <- FindAllMarkers(diffe, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+#diffe.markers
+#write.csv(diffe.markers,"../data/diff_edata_ttype.csv",row.names = FALSE)
+```
+
+

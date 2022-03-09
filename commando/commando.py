@@ -36,11 +36,13 @@ class ComManDo(uc.UnionCom):
         P=None,
         PF_Ratio=1,
         in_place=False,
+        loss_coefs=(1, 1, 1, 1),
         **kwargs
     ):
         self.P = P
         self.PF_Ratio = PF_Ratio
         self.in_place = in_place
+        self.loss_coefs = loss_coefs
 
         if 'project_mode' not in kwargs:
             kwargs['project_mode'] = 'nlma'
@@ -293,9 +295,9 @@ class ComManDo(uc.UnionCom):
 
         # Tuning
         # self.epoch_DNN = 500
+        # self.lr = .1
         # self.batch_size = 6
         # self.batch_size = 177
-        # self.lr = .01
 
         timer = time_logger()
         self.model = edModel(self.col, self.output_dim).to(self.device)
@@ -376,7 +378,7 @@ class ComManDo(uc.UnionCom):
                     (reconstructed[i] - data[i]).square().sum()
                     for i in range(self.dataset_num)
                 )
-                reconstruction_loss = 1e-3 * reconstruction_diff
+                reconstruction_loss = self.loss_coefs[0] * 1e-3 * reconstruction_diff
                 batch_loss += reconstruction_loss
                 timer.log('Reconstruction loss')
 
@@ -384,19 +386,19 @@ class ComManDo(uc.UnionCom):
                 csim, cdiff = sim_dist_func(embedded[0], embedded[1])
 
                 # Alignment loss
-                alignment_loss = 2e-4 * cdiff[P > 0].sum()
+                alignment_loss = self.loss_coefs[1] * 2e-4 * cdiff[P > 0].sum()
                 batch_loss += alignment_loss
                 timer.log('Aligned loss')
 
                 # Cross loss using F
                 weighted_F_cdiff = cdiff * F
-                cross_loss = 1e+1 * weighted_F_cdiff.sum()
+                cross_loss = self.loss_coefs[2] * 1e+1 * weighted_F_cdiff.sum()
                 batch_loss += cross_loss
                 timer.log('F-cross loss')
 
                 # Inverse cross loss using F
                 weighted_F_inv_csim = csim * F_inv
-                inv_cross_loss = 3e+0 * weighted_F_inv_csim.sum()
+                inv_cross_loss = self.loss_coefs[3] * 3e+0 * weighted_F_inv_csim.sum()
                 batch_loss += inv_cross_loss
                 timer.log('F-inv-cross loss')
 
