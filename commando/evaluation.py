@@ -72,6 +72,15 @@ def generate_figure(
     assert len(alg_results) == len(alg_names), '``alg_*`` params must correspond.'
 
     # Style
+    plt.rcParams.update({
+        'figure.titlesize': 20,
+        'axes.titlesize': 'x-large',
+        'xtick.labelsize': 20,
+        'ytick.labelsize': 40,
+        'font.size': 40,
+        'font.weight':'bold',
+        'font.family':'normal',
+    })
     sns.set(style='darkgrid')
 
     # Setup
