@@ -1,3 +1,16 @@
+# 3.5.0.0
+- Mute output on various functions
+- Add tuning function `utilities.tune_cm()`
+- Add early stopping
+- Add experimental loss parameters
+- Add alternative similarity measures
+- Add correlation visualization in `generate_figure`
+- Revise `loss_weights` parameter
+- Revise loss bookkeeping
+- Fix F normalization
+- Fix model normalization issue
+- Reruns with higher construction losses
+
 # 3.4.0
 - `generate_figure`
  - Added 3D plotting capability

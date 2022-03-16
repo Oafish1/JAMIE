@@ -1,3 +1,4 @@
+import contextlib
 from time import perf_counter
 
 import matplotlib.pyplot as plt
@@ -224,6 +225,7 @@ class SimpleModel(nn.Module):
 
 
 def predict_nn(source, target, epochs=200, batches=10):
+    """Example autoencoder"""
     model = SimpleModel(source.shape[1], target.shape[1])
     optimizer = torch.optim.AdamW(model.parameters())
     criterion = nn.MSELoss()
@@ -238,3 +240,24 @@ def predict_nn(source, target, epochs=200, batches=10):
             loss.backward()
             optimizer.step()
     return model(source).detach().cpu().numpy()
+
+
+def tune_cm(cm, dataset, types, wt_size, num_search=20):
+    best_acc = 0
+    wt_str = np.random.rand(wt_size * num_search)
+    for i in range(num_search):
+        wt = wt_str[wt_size*i:wt_size*(i+1)]
+
+        with contextlib.redirect_stdout(None):
+            cm.loss_weights = wt
+            cm_data = cm.fit_transform(dataset=dataset)
+            acc = cm.test_LabelTA(cm_data, types)
+
+        if acc > best_acc:
+            best_cm_data = cm_data
+            best_acc = acc
+            best_wt = wt
+        print(f'Done:{100 * (i+1) / num_search:.1f}%; Max:{best_acc:.3f}; Curr:{acc:.3f}', end='\r')
+    print()
+    print(f'Best Weights: {best_wt}')
+    return best_wt, best_cm_data

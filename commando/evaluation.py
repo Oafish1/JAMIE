@@ -1,3 +1,5 @@
+import contextlib
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -33,10 +35,10 @@ def test_partial(
         random_diag = np.zeros(num_samples)
         random_diag[random_idx] = 1
         cm = ComManDo(P=np.diag(random_diag), **kwargs)
-        cm_data = cm.fit_transform(dataset=datasets)
-        acc_list['lta'].append(cm.test_LabelTA(cm_data, types))
-        acc_list['foscttm'].append(cm.test_closer(cm_data))
-        print()
+        with contextlib.redirect_stdout(None):
+            cm_data = cm.fit_transform(dataset=datasets)
+            acc_list['lta'].append(cm.test_LabelTA(cm_data, types))
+            acc_list['foscttm'].append(cm.test_closer(cm_data))
 
     # https://stackoverflow.com/a/42466319
     if plot:
@@ -59,7 +61,8 @@ def generate_figure(
     dataset_names=None,
     # Style
     scale=20,
-    size_bound=(4, .25),
+    size_bound=[.25, .5],
+    vertical_scale=.75,
     # Visualizations
     reconstruction_features={},
     # Remove Visualizations
@@ -78,8 +81,8 @@ def generate_figure(
         'xtick.labelsize': 20,
         'ytick.labelsize': 40,
         'font.size': 40,
-        'font.weight':'bold',
-        'font.family':'normal',
+        'font.weight': 'bold',
+        'font.family': 'normal',
     })
     sns.set(style='darkgrid')
 
@@ -89,7 +92,12 @@ def generate_figure(
     types = [np.unique(type, return_inverse=True)[1] for type in labels]
     num_modalities = len(dataset)
     num_algorithms = len(integrated_data)
+    dataset_names = [
+        dataset_names[i] if dataset_names is not None else f'Dataset {i}'
+        for i in range(num_modalities)
+    ]
 
+    # Number of rows
     height_numerators = [
         1,
         1,
@@ -97,17 +105,19 @@ def generate_figure(
         1,
         (num_modalities**2 - num_modalities) - len(exclude_predict)
     ]
+    # Number of columns
     height_denominators = [
         (num_modalities),
         (num_modalities * num_algorithms),
         (2 - skip_partial),
-        (num_modalities * num_algorithms),
-        (4 if not skip_nn else 3),
+        (num_modalities),
+        (5 if not skip_nn else 4),
     ]
-    height_denominators = [max(size_bound[0], x) for x in height_denominators]
+    # Control for min/max single-row height
+    height_denominators = [
+        min(1/size_bound[0], max(1/size_bound[1], x)) for x in height_denominators]
     height_ratios = [n/d for n, d in zip(height_numerators, height_denominators)]
-    height_ratios = [min(size_bound[1] * m, x) for m, x in zip(height_numerators, height_ratios)]
-    figsize = (scale, scale * sum(height_ratios))
+    figsize = (scale, scale * vertical_scale * sum(height_ratios))
     fig = plt.figure(constrained_layout=True, figsize=figsize)
     subfigs = fig.subfigures(5, 1, height_ratios=height_ratios, wspace=.07)
 
@@ -120,7 +130,7 @@ def generate_figure(
             pca_data_subset = np.transpose(pca_data[labels[i] == label])
             ax.scatter(*pca_data_subset, s=5., label=label)
             ax.set_aspect('equal', adjustable='box')
-        title = dataset_names[i] if dataset_names is not None else f'Dataset {i}'
+        title = dataset_names[i]
         ax.set_title(title)
         ax.set_xlabel('PCA-1')
         ax.set_ylabel('PCA-2')
@@ -137,7 +147,7 @@ def generate_figure(
             for label in np.unique(np.concatenate(labels)):
                 data_subset = np.transpose(integrated_data[j][i][labels[i] == label])[:2, :]
                 ax.scatter(*data_subset, s=5., label=label)
-            title = dataset_names[i] if dataset_names is not None else f'Dataset {i}'
+            title = dataset_names[i]
             ax.set_title(title)
             ax.set_xlabel('Latent Feature 1')
             ax.set_ylabel('Latent Feature 2')
@@ -171,17 +181,18 @@ def generate_figure(
     for name in dataset_names:
         acc_dict['Silhouette Score:\n' + name] = []
     for i in range(num_algorithms):
-        acc_dict['Label Transfer Accuracy'].append(
-            cm_trained.test_LabelTA(integrated_data[i], types))
-        acc_dict['FOSCTTM'].append(
-            cm_trained.test_closer(integrated_data[i]))
-        for j, name in enumerate(dataset_names):
-            acc_dict['Silhouette Score:\n' + name].append(
-                silhouette_score(integrated_data[i][j], types[j]))
+        with contextlib.redirect_stdout(None):
+            acc_dict['Label Transfer Accuracy'].append(
+                cm_trained.test_LabelTA(integrated_data[i], types))
+            acc_dict['FOSCTTM'].append(
+                cm_trained.test_closer(integrated_data[i]))
+            for j, name in enumerate(dataset_names):
+                acc_dict['Silhouette Score:\n' + name].append(
+                    silhouette_score(integrated_data[i][j], types[j]))
     df = pd.DataFrame(acc_dict).melt(
         id_vars=list(acc_dict.keys())[:1],
         value_vars=list(acc_dict.keys())[1:])
-    sns.barplot(data=df, x='variable', y='value', hue='Algorithm', ax=ax, alpha=.6)
+    sns.barplot(data=df, x='variable', y='value', hue='Algorithm', ax=ax)
     ax.set_xlabel(None)
     ax.set_ylabel(None)
     ax.set_title('Metric by Algorithm')
@@ -203,26 +214,30 @@ def generate_figure(
 
     # Silhouette Value Boxplots
     cfig = subfigs[3]
-    csubfigs = ensure_list(
-        cfig.subfigures(1, num_algorithms, wspace=.07))
-    for i in range(num_algorithms):
-        csubfig = csubfigs[i]
-        for j in range(num_modalities):
-            ax = csubfig.add_subplot(1, num_modalities, j+1)
-            # Calculate silhouette coefficients
-            coefs = silhouette_samples(integrated_data[i][j], types[j])
-            coefs_by_label = []
+    axs = cfig.subplots(1, num_modalities)
+    for i, ax in enumerate(axs):
+        # Calculate coefficients
+        df = pd.DataFrame(columns=['Algorithm', 'Cell', 'Silhouette Coefficient'])
+        for j in range(num_algorithms):
+            coefs = silhouette_samples(integrated_data[j][i], types[i])
             for label in np.unique(np.concatenate(labels)):
-                coefs_by_label.append(coefs[labels[j] == label])
-            ax.boxplot(coefs_by_label,
-                       labels=np.unique(np.concatenate(labels)),
-                       # notch=True,
-                       vert=True,
-                       patch_artist=True,
-                       boxprops={'facecolor': 'white'})
-            ax.set_xlabel('Cell')
-            ax.set_ylabel('Silhouette Coefficient')
-        csubfig.suptitle(integrated_alg_names[i])
+                for value in coefs[labels[i] == label]:
+                    df = df.append({
+                        'Algorithm': integrated_alg_names[j],
+                        'Cell': label,
+                        'Silhouette Coefficient': value,
+                    }, ignore_index=True)
+
+        # Plot
+        sns.boxplot(
+            data=df,
+            x='Cell',
+            y='Silhouette Coefficient',
+            hue='Algorithm',
+            ax=ax,
+        )
+        ax.set_title(dataset_names[i])
+        ax.legend([], [], frameon=False)
     cfig.suptitle('Silhouette Score by Cell Type')
 
     # Reconstruct Modality
@@ -238,13 +253,10 @@ def generate_figure(
             if i == j or ((i, j) in exclude_predict):
                 continue
             csubfig = csubfigs[fig_idx]
-            axs = csubfig.subplots(1, 4 if not skip_nn else 3)
+            axs = csubfig.subplots(1, 5 if not skip_nn else 4)
             fig_idx += 1
 
-            if dataset_names is not None:
-                csubfig.suptitle(f'{dataset_names[i]} -> {dataset_names[j]}')
-            else:
-                csubfig.suptitle(f'{i} -> {j}')
+            csubfig.suptitle(f'{dataset_names[i]} -> {dataset_names[j]}')
 
             predicted = cm_trained.model.decoders[j](
                 cm_trained.model.encoders[i](
@@ -252,7 +264,6 @@ def generate_figure(
                 )).detach().cpu().numpy()
             actual = dataset[j]
 
-            # asdf: Use PCA
             # Setup
             if (i, j) in reconstruction_features:
                 feat = reconstruction_features[(i, j)]
@@ -299,6 +310,17 @@ def generate_figure(
             axs[axi].set_xlabel('Feature')
             axs[axi].set_ylabel('Correlation')
             axi += 1
+
+            # Cherry-Picked Prediction
+            for label in np.unique(np.concatenate(labels)):
+                true = np.transpose(actual[:, feat[0]][labels[j] == label])
+                pred = np.transpose(predicted[:, feat[0]][labels[j] == label])
+                axs[axi].scatter(true, pred, label=label, s=5.)
+            axs[axi].set_title('Predicted vs Truth')
+            axs[axi].set_xlabel('True Value')
+            axs[axi].set_ylabel('Predicted Value')
+            axi += 1
+
     cfig.suptitle('Modality Prediction')
 
     plt.show()
