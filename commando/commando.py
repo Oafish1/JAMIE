@@ -1,4 +1,5 @@
 from itertools import product
+from math import prod
 import warnings
 
 import anndata as ad
@@ -18,32 +19,49 @@ from unioncom.utils import (
 )
 
 from .model import edModel
-from .nn_funcs import gw_loss, knn, nlma_loss, uc_loss  # noqa
+from .nn_funcs import gw_loss, knn_dist, knn_sim, nlma_loss, uc_loss  # noqa
 from .utilities import time_logger, transfer_accuracy, uc_visualize
 
 
 class ComManDo(uc.UnionCom):
-    """Adaptation of https://github.com/caokai1073/UnionCom by caokai1073"""
+    """
+    Adaptation of https://github.com/caokai1073/UnionCom by caokai1073
+
+    P: Correspondence prior matrix
+    PF_Ratio: Ratio of priors:assumed correspondence; .5 is equal, 1 is only P
+    in_place: Whether to do the calculation in place.  Will save memory but may
+        alter original data
+    """
     def __init__(
         self,
-        aligned_idx=None,
-        aligned_sample_pct=None,
+        P=None,
+        PF_Ratio=1,
         in_place=False,
+        loss_weights=None,
+        use_early_stop=True,
+        min_increment=.1,
+        max_steps_without_increment=500,
+        debug=False,
         **kwargs
     ):
-        self.aligned_idx = aligned_idx
-        self.aligned_sample_pct = aligned_sample_pct
+        self.P = P
+        self.PF_Ratio = PF_Ratio
         self.in_place = in_place
+        self.loss_weights = loss_weights
 
-        if self.aligned_idx is not None:
-            assert len(self.aligned_idx[0]) == len(self.aligned_idx[1]), (
-                '``aligned_idx`` must be of the form ((n), (n)).'
-            )
+        self.use_early_stop = False
+        self.min_increment = .1
+        self.max_steps_without_increment = 500
 
-        if 'project_mode' not in kwargs:
-            kwargs['project_mode'] = 'nlma'
+        self.debug = debug
+
+        # Default changes
         # if 'distance_mode' not in kwargs:
         #     kwargs['distance_mode'] = 'spearman'
+        if 'project_mode' not in kwargs:
+            kwargs['project_mode'] = 'nlma'
+        if 'log_pd' not in kwargs:
+            kwargs['log_pd'] = 500
 
         super().__init__(**kwargs)
 
@@ -88,6 +106,8 @@ class ComManDo(uc.UnionCom):
             self.dataset = self.dataset * 1
 
         self.dataset_num = len(self.dataset)
+        self.col = []
+        self.row = []
         for i in range(self.dataset_num):
             self.row.append(np.shape(self.dataset[i])[0])
             self.col.append(np.shape(self.dataset[i])[1])
@@ -274,20 +294,26 @@ class ComManDo(uc.UnionCom):
         assert len(W) == 2, 'Currently only compatible with 2 modalities.'
 
         # Default vars
-        if self.aligned_idx is None:
+        if self.P is None:
             # If not given, assume total alignment iff datasets are same size
             if self.row[0] == self.row[1]:
-                self.aligned_idx = (range(self.row[0]), range(self.row[1]))
+                self.P = np.eye(self.row[0])
             else:
-                self.aligned_idx = ((), ())
-        if self.aligned_sample_pct is None:
-            self.aligned_sample_pct = max(
-                len(self.aligned_idx[i])/self.row[i] for i in range(self.dataset_num)
-            )
+                self.P = np.zeros((self.row[0], self.row[1]))
 
-        # Tuning
+        if (self.P - np.eye(self.row[0])).sum() == 0:
+            self.perfect_alignment = True
+        else:
+            self.perfect_alignment = False
+
+        self.P = torch.Tensor(self.P).float().to(self.device)
+        self.F = torch.Tensor(W[0][1]).float().to(self.device)
+
+        # Debugging
         # self.epoch_DNN = 500
-        # self.lr = .01
+        # self.lr = .1
+        # self.batch_size = 8
+        # self.batch_size = 177
 
         timer = time_logger()
         self.model = edModel(self.col, self.output_dim).to(self.device)
@@ -297,17 +323,19 @@ class ComManDo(uc.UnionCom):
             # Cosine Similarity
             sim = (
                 torch.mm(a, torch.t(b))
-                / a.norm(dim=1).reshape(-1, 1)
-                / b.norm(dim=1).reshape(1, -1)
+                / (a.norm(dim=1).reshape(-1, 1) * b.norm(dim=1).reshape(1, -1))
             )
-            return sim, 1-sim
+            # return sim, 1-sim
+            diff = 1 - sim
+            sim[sim < 0] = 0
+            diff[diff < 0] = 0
+            return sim, diff
 
-            # Euclidean Distance (naïve)
-            # dist = torch.zeros(a.size()[0], b.size()[0])
-            # for i in range(a.size()[0]):
-            #     for j in range(b.size()[0]):
-            #         dist[i][j] = torch.linalg.norm(a[i] - b[j])
+            # # Euclidean Distance
+            # dist = torch.cdist(a, b, p=2)
+            # dist = dist / dist.max()
             # sim = 1 / (1+dist)
+            # sim = sim / sim.max()
             # return sim, dist
 
         self.model.train()
@@ -321,8 +349,11 @@ class ComManDo(uc.UnionCom):
         if len_dataloader == 0:
             len_dataloader = 1
             self.batch_size = np.max(self.row)
-        num_aligned = int(self.aligned_sample_pct * self.batch_size)
-        num_unaligned = self.batch_size - num_aligned
+
+        # Early stopping setup
+        best_loss = np.inf
+        streak = 0
+
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
@@ -331,79 +362,184 @@ class ComManDo(uc.UnionCom):
                 batch_loss = 0
 
                 # Random samples
-                random_aligned = np.random.randint(
-                    0, len(self.aligned_idx[0]), num_aligned
-                )
-                random_unaligned = [
-                    np.random.randint(0, self.row[i], num_unaligned)
+                if self.perfect_alignment:
+                    set_rand = np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                random_batch = [
+                    set_rand if self.perfect_alignment else
+                    np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                    # np.random.choice(range(self.row[i]), self.batch_size - i, replace=False)
                     for i in range(self.dataset_num)
                 ]
-                random_batch = [
-                    np.concatenate((random_aligned, unaligned))
-                    for unaligned in random_unaligned
-                ]
                 data = [self.dataset[i][random_batch[i]] for i in range(self.dataset_num)]
-                aligned_subset_idx = 2 * (range(num_aligned),)
+
+                # P setup
+                P = self.P[random_batch[0]][:, random_batch[1]]
+                if P.absolute().max() != 0:
+                    P /= P.absolute().max()
 
                 # F setup
-                F = W[0][1][random_batch[0]][:, random_batch[1]]
-                F = knn(F, k=5)
-                F = torch.from_numpy(F).float().to(self.device)
+                F = self.F[random_batch[0]][:, random_batch[1]]
+                if F.absolute().max() != 0:
+                    F /= F.absolute().max()
                 F_inv = 1 - F
-                F /= F.sum()
-                F_inv /= F_inv.sum()
+                if F_inv.absolute().max() != 0:
+                    F_inv /= F_inv.absolute().max()
+
+                # KEY PART FOR ACC
+                # Use KNN, needs to be adapted to diff num samples
+                # F = knn_dist(F) if self.perfect_alignment else knn_sim(F)
+                # F = torch.from_numpy(F).float().to(self.device)
+                # F_inv = knn_dist(F_inv) if self.perfect_alignment else knn_sim(F_inv)
+                # F_inv = torch.from_numpy(F_inv).float().to(self.device)
+
                 timer.log('Get subset samples')
 
+                # Aggregate correspondence
+                corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F
+
                 # Run model
-                embedded, reconstructed = self.model(*data, aligned_idx=aligned_subset_idx)
+                embedded, reconstructed = self.model(*data, corr=corr)
                 timer.log('Run model')
 
+                # Loss bookkeeping
+                losses = []
+
                 # Reconstruction error
-                reconstruction_diff = [reconstructed[i] - data[i] for i in range(self.dataset_num)]
-                reconstruction_diff = torch.cat(reconstruction_diff, dim=1).square().sum()
-                batch_loss += 1e-3 * reconstruction_diff
+                reconstruction_diff = sum(
+                    (reconstructed[i] - data[i]).square().sum() / prod(data[i].shape)
+                    for i in range(self.dataset_num)
+                ) / self.dataset_num
+                reconstruction_loss = reconstruction_diff
+                losses.append(reconstruction_loss)
                 timer.log('Reconstruction loss')
 
                 # Difference
                 csim, cdiff = sim_dist_func(embedded[0], embedded[1])
+                csim0, cdiff0 = sim_dist_func(embedded[0], embedded[0])
+                csim1, cdiff1 = sim_dist_func(embedded[1], embedded[1])
+                timer.log('Difference calculation')
 
-                # Alignment error
-                batch_loss += 2e-4 * cdiff.diag()[:num_aligned].sum()
-                timer.log('Aligned loss')
+                # Alignment loss
+                if P.absolute().sum() != 0:
+                    weighted_P_cdiff = cdiff * P
+                    alignment_loss = weighted_P_cdiff.sum() / P.absolute().sum()
+                    losses.append(alignment_loss)
+                    timer.log('Aligned loss')
 
-                # Cross error using F
+                # Cross loss using F
                 weighted_F_cdiff = cdiff * F
-                batch_loss += 1e+1 * weighted_F_cdiff.sum()
+                cross_loss = weighted_F_cdiff.sum() / F.sum()
+                losses.append(cross_loss)
                 timer.log('F-cross loss')
 
-                # Inverse cross error using F
+                # Inverse cross loss using F
                 weighted_F_inv_csim = csim * F_inv
-                batch_loss += 3e+0 * weighted_F_inv_csim.sum()
+                inv_cross_loss = weighted_F_inv_csim.sum() / F_inv.sum()
+                losses.append(inv_cross_loss)
                 timer.log('F-inv-cross loss')
 
-                # Debug print losses
-                # print(reconstruction_diff)
-                # print(cdiff.sum())
-                # print(weighted_F_cdiff.sum())
-                # print(weighted_F_inv_csim.sum())
-                # print()
+                # # Repulsion loss (Promising, almost equiv to inv-cross)
+                # repulsion_loss = (
+                #     # (csim.sum() + csim0.sum() + csim1.sum()) /
+                #     # (prod(csim.shape) + prod(csim0.shape) + prod(csim1.shape))
+                #     (csim0.sum() + csim1.sum()) / (prod(csim0.shape) + prod(csim1.shape))
+                # )
+                # losses.append(repulsion_loss)
+                # timer.log('Repulsion loss')
+
+                # # Efficiency loss (Promising)
+                # total_correlation = 0
+                # for i in range(self.dataset_num):
+                #     adjusted = embedded[i] - embedded[i].mean(axis=0, keepdim=True)
+                #     mat = torch.mm(torch.t(adjusted), adjusted)
+                #     for j in range(self.output_dim):
+                #         for k in range(j+1, self.output_dim):
+                #             correlation = mat[j, k] / (mat[j, j] * mat[k, k]).sqrt()
+                #             total_correlation += correlation.square()
+                # efficiency_loss = total_correlation / (self.output_dim**2 - self.output_dim)
+                # losses.append(efficiency_loss)
+                # timer.log('Collapse loss')
+
+                # # Magnitude loss
+                # max0 = embedded[0].abs().mean(axis=1).max()
+                # max1 = embedded[1].abs().mean(axis=1).max()
+                # mag_loss = 1e-1 * (max0 + max1)
+                # losses.append(mag_loss)
+                # timer.log('Magnitude loss')
+
+                # # Zero loss
+                # min0 = 1 / embedded[0].abs()
+                # min1 = 1 / embedded[1].abs()
+                # zero_loss = (min0.sum() + min1.sum()) / (2 * prod(embedded[0].shape))
+                # losses.append(zero_loss)
+                # timer.log('Collapse loss')
+
+                # # Axis stick loss
+                # min0 = 1 / embedded[0].mean(axis=1).abs()
+                # min1 = 1 / embedded[1].mean(axis=1).abs()
+                # as_loss = 1e-4 * (min0.sum() + min1.sum())
+                # losses.append(as_loss)
+                # timer.log('Collapse loss')
+
+                # # Collapse loss
+                # min0 = 1 / embedded[0].abs().mean(axis=1).min()
+                # min1 = 1 / embedded[1].abs().mean(axis=1).min()
+                # collapse_loss = 1e-1 * (min0 + min1)
+                # losses.append(collapse_loss)
+                # timer.log('Collapse loss')
+
+                # # F loss
+                # F1 = torch.mm(torch.t(F), torch.mm(cdiff0, F)) - cdiff1
+                # F1 = F1.square().sum()
+                # F2 = torch.mm(F, torch.mm(cdiff1, torch.t(F))) - cdiff0
+                # F2 = F2.square().sum()
+                # F_loss = 3e-3 * (F1 + F2)
+                # losses.append(F_loss)
+                # timer.log('F loss')
 
                 # Record loss
+                if self.loss_weights is not None:
+                    batch_loss = sum([lo * wt for lo, wt in zip(losses, self.loss_weights)])
+                else:
+                    batch_loss = sum(losses)
                 epoch_loss += batch_loss / len_dataloader
 
-                # Step
-                loss = batch_loss
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                timer.log('Step')
+                # Append losses
+                batch_loss.backward()
 
+            # Step
+            optimizer.step()
+            optimizer.zero_grad()
+            timer.log('Step')
+
+            # CLI Printing
             if (epoch+1) % self.log_DNN == 0:
                 print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{epoch_loss.data.item():4f}')
-                # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
+
+            # Debug Printing
+            if (epoch+1) % 100 == 0 and self.debug:
+                if self.loss_weights is not None:
+                    print([lo.detach().cpu() * wt for lo, wt in zip(losses, self.loss_weights)])
+                else:
+                    print([lo.detach().cpu() for lo in losses])
+
+            # Early stopping
+            epsilon = best_loss - epoch_loss
+            if epsilon > self.min_increment:
+                best_loss = epoch_loss
+                streak = 0
+            else:
+                streak += 1
+            if streak >= self.max_steps_without_increment and self.use_early_stop:
+                break
 
         self.model.eval()
-        integrated_data, _ = self.model(*self.dataset, aligned_idx=self.aligned_idx)
+        corr_P = self.P / self.P.sum()
+        corr_F = self.F
+        # corr_F = knn_dist(corr_F) if self.perfect_alignment else knn_sim(corr_F)
+        corr_F /= corr_F.absolute().max()
+        corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
+        integrated_data, _ = self.model(*self.dataset, corr=corr)
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")
@@ -457,7 +593,11 @@ class ComManDo(uc.UnionCom):
             distances = self.distance_function(self.dataset[i])
             self.dist.append(distances)
 
-    def test_closer(self, integrated_data, distance_metric=None):
+    def test_closer(
+        self,
+        integrated_data,
+        distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+    ):
         """Test fraction of samples closer than the true match"""
         # ASDF: 3+ datasets and non-aligned data
         assert len(integrated_data) == 2, 'Two datasets are supported for FOSCTTM'
@@ -477,6 +617,32 @@ class ComManDo(uc.UnionCom):
         foscttm = raw_count_closer / (2 * size**2)
         print(f'foscttm: {foscttm}')
         return foscttm
+
+    def test_label_dist(
+        self,
+        integrated_data,
+        datatype,
+        distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+        verbose=True,
+    ):
+        """Test average distance by label"""
+        # ASDF: 3+ datasets
+        assert len(integrated_data) == 2, 'Two datasets are supported for ``label_dist``'
+
+        if distance_metric is None:
+            distance_metric = self.distance_function
+        data = np.concatenate(integrated_data, axis=0)
+        labels = np.concatenate(datatype)
+
+        # Will double-count aligned sample
+        average_representation = {}
+        for label in np.unique(labels):
+            average_representation[label] = np.average(data[labels == label, :], axis=0)
+        dist = distance_metric(np.array(list(average_representation.values())))
+        if verbose:
+            print(f'Inter-label distances ({list(average_representation.keys())}):')
+            print(dist)
+        return np.array(list(average_representation.keys())), dist
 
     def test_LabelTA(self, integrated_data, datatype):
         """Modified version of UnionCom ``test_LabelTA`` to return acc"""

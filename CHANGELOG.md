@@ -1,3 +1,56 @@
+# 3.5.0
+- Added `integrated_use_pca` option for `generate_figure`
+- Experimented with new losses
+- New scaling on each loss variable
+- Notebook preprocessing changes
+- Reran notebooks
+- Revised sim-dist measure to only include positives
+- Revised model structure
+- Stepping with epochs now rather than batches
+
+# 3.4.0.0
+- Mute output on various functions
+- Add tuning function `utilities.tune_cm()`
+- Add early stopping
+- Add experimental loss parameters
+- Add alternative similarity measures
+- Add correlation visualization in `generate_figure`
+- Revise `loss_weights` parameter
+- Revise loss bookkeeping
+- Fix F normalization
+- Fix model normalization issue
+- Reruns with higher construction losses
+
+# 3.4.0
+- `generate_figure`
+ - Added 3D plotting capability
+ - Various formatting changes and style options
+ - Silhouette coefficient visualizations
+ - More modality prediction comparisons
+- Add MMD-MA comparison
+- Add scMNC data
+- Reruns
+
+# 3.3.0
+- Added `generate_figure` to more concisely show results
+- Small changes in several algorithms to mute output
+- Renamed `joint_embedding` folder to `general_analysis`
+- Re-ran notebooks
+
+# 3.2.0
+- Added `test_label_dist` to show inter-cell distance
+- Re-run and revise notebooks, especially for `modality prediction`
+
+# 3.1.0
+- `aligned_idx` is now `P`, a matrix filled with priors
+- Combined `P` and `F` matrices into aggregate `corr`
+- Changes improved unaligned performance significantly
+- Slightly reduced aligned performance
+- Re-ran joint embedding notebooks
+- Fixed bug in `knn` calculation
+- Added `perfect_alignment` toggle for separate knn graph calculation method
+- Cleaned up no-longer-used files
+
 # 3.0.0
 - Add evaluation graph for alignment assumptions
 - Merge notebooks
