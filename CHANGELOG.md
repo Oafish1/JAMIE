@@ -1,4 +1,14 @@
-# 3.5.0.0
+# 3.5.0
+- Added `integrated_use_pca` option for `generate_figure`
+- Experimented with new losses
+- New scaling on each loss variable
+- Notebook preprocessing changes
+- Reran notebooks
+- Revised sim-dist measure to only include positives
+- Revised model structure
+- Stepping with epochs now rather than batches
+
+# 3.4.0.0
 - Mute output on various functions
 - Add tuning function `utilities.tune_cm()`
 - Add early stopping

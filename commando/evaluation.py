@@ -65,6 +65,7 @@ def generate_figure(
     vertical_scale=.75,
     # Visualizations
     reconstruction_features={},
+    integrated_use_pca=False,
     # Remove Visualizations
     exclude_predict=[],
     skip_partial=False,
@@ -144,13 +145,20 @@ def generate_figure(
     for csubfig, j in zip(csubfigs, range(num_algorithms)):
         for i in range(num_modalities):
             ax = csubfig.add_subplot(1, num_modalities, i+1)  # , projection='3d'
+            plot_data = integrated_data[j][i]
+            if integrated_use_pca:
+                plot_data = PCA(n_components=2).fit_transform(plot_data)
             for label in np.unique(np.concatenate(labels)):
-                data_subset = np.transpose(integrated_data[j][i][labels[i] == label])[:2, :]
+                data_subset = np.transpose(plot_data[labels[i] == label])[:2, :]
                 ax.scatter(*data_subset, s=5., label=label)
             title = dataset_names[i]
             ax.set_title(title)
-            ax.set_xlabel('Latent Feature 1')
-            ax.set_ylabel('Latent Feature 2')
+            if integrated_use_pca:
+                type_text = 'PCA'
+            else:
+                type_text = 'Latent Feature'
+            ax.set_xlabel(type_text + '-1')
+            ax.set_ylabel(type_text + '-2')
             # ax.set_zlabel('Latent Feature 3')
         csubfig.suptitle(integrated_alg_names[j])
     cfig.suptitle('Integrated Embeddings')

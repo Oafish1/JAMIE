@@ -1,4 +1,5 @@
 from itertools import product
+from math import prod
 import warnings
 
 import anndata as ad
@@ -37,6 +38,10 @@ class ComManDo(uc.UnionCom):
         PF_Ratio=1,
         in_place=False,
         loss_weights=None,
+        use_early_stop=True,
+        min_increment=.1,
+        max_steps_without_increment=500,
+        debug=False,
         **kwargs
     ):
         self.P = P
@@ -44,10 +49,19 @@ class ComManDo(uc.UnionCom):
         self.in_place = in_place
         self.loss_weights = loss_weights
 
-        if 'project_mode' not in kwargs:
-            kwargs['project_mode'] = 'nlma'
+        self.use_early_stop = False
+        self.min_increment = .1
+        self.max_steps_without_increment = 500
+
+        self.debug = debug
+
+        # Default changes
         # if 'distance_mode' not in kwargs:
         #     kwargs['distance_mode'] = 'spearman'
+        if 'project_mode' not in kwargs:
+            kwargs['project_mode'] = 'nlma'
+        if 'log_pd' not in kwargs:
+            kwargs['log_pd'] = 500
 
         super().__init__(**kwargs)
 
@@ -293,12 +307,12 @@ class ComManDo(uc.UnionCom):
             self.perfect_alignment = False
 
         self.P = torch.Tensor(self.P).float().to(self.device)
-        self.F = W[0][1]
+        self.F = torch.Tensor(W[0][1]).float().to(self.device)
 
-        # Tuning
+        # Debugging
         # self.epoch_DNN = 500
         # self.lr = .1
-        # self.batch_size = 6
+        # self.batch_size = 8
         # self.batch_size = 177
 
         timer = time_logger()
@@ -311,12 +325,11 @@ class ComManDo(uc.UnionCom):
                 torch.mm(a, torch.t(b))
                 / (a.norm(dim=1).reshape(-1, 1) * b.norm(dim=1).reshape(1, -1))
             )
-            return sim, 1-sim
-            # return (1+sim)/2, (1-sim)/2
-            # diff = 1 - sim
-            # sim[sim < 0] = 0
-            # diff[diff < 0] = 0
-            # return sim, diff
+            # return sim, 1-sim
+            diff = 1 - sim
+            sim[sim < 0] = 0
+            diff[diff < 0] = 0
+            return sim, diff
 
             # # Euclidean Distance
             # dist = torch.cdist(a, b, p=2)
@@ -338,10 +351,7 @@ class ComManDo(uc.UnionCom):
             self.batch_size = np.max(self.row)
 
         # Early stopping setup
-        use_early_stop = False
         best_loss = np.inf
-        min_increment = .1
-        max_steps_without_increment = 500
         streak = 0
 
         timer.log('Setup')
@@ -364,20 +374,24 @@ class ComManDo(uc.UnionCom):
 
                 # P setup
                 P = self.P[random_batch[0]][:, random_batch[1]]
-                if P.sum() != 0:
-                    P /= P.sum()
+                if P.absolute().max() != 0:
+                    P /= P.absolute().max()
 
                 # F setup
                 F = self.F[random_batch[0]][:, random_batch[1]]
+                if F.absolute().max() != 0:
+                    F /= F.absolute().max()
+                F_inv = 1 - F
+                if F_inv.absolute().max() != 0:
+                    F_inv /= F_inv.absolute().max()
 
                 # KEY PART FOR ACC
                 # Use KNN, needs to be adapted to diff num samples
-                F = knn_dist(F) if self.perfect_alignment else knn_sim(F)
-                F = torch.from_numpy(F).float().to(self.device)
+                # F = knn_dist(F) if self.perfect_alignment else knn_sim(F)
+                # F = torch.from_numpy(F).float().to(self.device)
+                # F_inv = knn_dist(F_inv) if self.perfect_alignment else knn_sim(F_inv)
+                # F_inv = torch.from_numpy(F_inv).float().to(self.device)
 
-                F_inv = 1 - F
-                F /= F.sum()
-                F_inv /= F_inv.sum()
                 timer.log('Get subset samples')
 
                 # Aggregate correspondence
@@ -392,10 +406,10 @@ class ComManDo(uc.UnionCom):
 
                 # Reconstruction error
                 reconstruction_diff = sum(
-                    (reconstructed[i] - data[i]).square().sum()
+                    (reconstructed[i] - data[i]).square().sum() / prod(data[i].shape)
                     for i in range(self.dataset_num)
-                )
-                reconstruction_loss = 1e-3 * reconstruction_diff
+                ) / self.dataset_num
+                reconstruction_loss = reconstruction_diff
                 losses.append(reconstruction_loss)
                 timer.log('Reconstruction loss')
 
@@ -406,22 +420,45 @@ class ComManDo(uc.UnionCom):
                 timer.log('Difference calculation')
 
                 # Alignment loss
-                weighted_P_cdiff = cdiff * P
-                alignment_loss = 2e-4 * weighted_P_cdiff.sum()
-                losses.append(alignment_loss)
-                timer.log('Aligned loss')
+                if P.absolute().sum() != 0:
+                    weighted_P_cdiff = cdiff * P
+                    alignment_loss = weighted_P_cdiff.sum() / P.absolute().sum()
+                    losses.append(alignment_loss)
+                    timer.log('Aligned loss')
 
                 # Cross loss using F
                 weighted_F_cdiff = cdiff * F
-                cross_loss = 1e+1 * weighted_F_cdiff.sum()
+                cross_loss = weighted_F_cdiff.sum() / F.sum()
                 losses.append(cross_loss)
                 timer.log('F-cross loss')
 
                 # Inverse cross loss using F
                 weighted_F_inv_csim = csim * F_inv
-                inv_cross_loss = 3e+0 * weighted_F_inv_csim.sum()
+                inv_cross_loss = weighted_F_inv_csim.sum() / F_inv.sum()
                 losses.append(inv_cross_loss)
                 timer.log('F-inv-cross loss')
+
+                # # Repulsion loss (Promising, almost equiv to inv-cross)
+                # repulsion_loss = (
+                #     # (csim.sum() + csim0.sum() + csim1.sum()) /
+                #     # (prod(csim.shape) + prod(csim0.shape) + prod(csim1.shape))
+                #     (csim0.sum() + csim1.sum()) / (prod(csim0.shape) + prod(csim1.shape))
+                # )
+                # losses.append(repulsion_loss)
+                # timer.log('Repulsion loss')
+
+                # # Efficiency loss (Promising)
+                # total_correlation = 0
+                # for i in range(self.dataset_num):
+                #     adjusted = embedded[i] - embedded[i].mean(axis=0, keepdim=True)
+                #     mat = torch.mm(torch.t(adjusted), adjusted)
+                #     for j in range(self.output_dim):
+                #         for k in range(j+1, self.output_dim):
+                #             correlation = mat[j, k] / (mat[j, j] * mat[k, k]).sqrt()
+                #             total_correlation += correlation.square()
+                # efficiency_loss = total_correlation / (self.output_dim**2 - self.output_dim)
+                # losses.append(efficiency_loss)
+                # timer.log('Collapse loss')
 
                 # # Magnitude loss
                 # max0 = embedded[0].abs().mean(axis=1).max()
@@ -433,7 +470,7 @@ class ComManDo(uc.UnionCom):
                 # # Zero loss
                 # min0 = 1 / embedded[0].abs()
                 # min1 = 1 / embedded[1].abs()
-                # zero_loss = 1e-4 * (min0.sum() + min1.sum())
+                # zero_loss = (min0.sum() + min1.sum()) / (2 * prod(embedded[0].shape))
                 # losses.append(zero_loss)
                 # timer.log('Collapse loss')
 
@@ -449,19 +486,6 @@ class ComManDo(uc.UnionCom):
                 # min1 = 1 / embedded[1].abs().mean(axis=1).min()
                 # collapse_loss = 1e-1 * (min0 + min1)
                 # losses.append(collapse_loss)
-                # timer.log('Collapse loss')
-
-                # # Efficiency loss
-                # total_correlation = 0
-                # for i in range(self.dataset_num):
-                #     adjusted = embedded[i] - embedded[i].mean(axis=0, keepdim=True)
-                #     mat = torch.mm(torch.t(adjusted), adjusted)
-                #     for j in range(self.output_dim):
-                #         for k in range(j+1, self.output_dim):
-                #             correlation = mat[j, k] / (mat[j, j] * mat[k, k]).sqrt()
-                #             total_correlation += correlation.square()
-                # efficiency_loss = 1e1 * total_correlation.sum()
-                # losses.append(efficiency_loss)
                 # timer.log('Collapse loss')
 
                 # # F loss
@@ -480,39 +504,40 @@ class ComManDo(uc.UnionCom):
                     batch_loss = sum(losses)
                 epoch_loss += batch_loss / len_dataloader
 
-                # Step
-                loss = batch_loss
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                timer.log('Step')
+                # Append losses
+                batch_loss.backward()
+
+            # Step
+            optimizer.step()
+            optimizer.zero_grad()
+            timer.log('Step')
 
             # CLI Printing
             if (epoch+1) % self.log_DNN == 0:
                 print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{epoch_loss.data.item():4f}')
-                # self.Visualize(self.dataset, [p.detach().cpu().numpy() for p in primes])
+
+            # Debug Printing
+            if (epoch+1) % 100 == 0 and self.debug:
+                if self.loss_weights is not None:
+                    print([lo.detach().cpu() * wt for lo, wt in zip(losses, self.loss_weights)])
+                else:
+                    print([lo.detach().cpu() for lo in losses])
 
             # Early stopping
             epsilon = best_loss - epoch_loss
-            if epsilon > min_increment:
+            if epsilon > self.min_increment:
                 best_loss = epoch_loss
                 streak = 0
             else:
                 streak += 1
-            if streak >= max_steps_without_increment and use_early_stop:
+            if streak >= self.max_steps_without_increment and self.use_early_stop:
                 break
-
-        # Debug print losses
-        print()
-        print([float(lo.detach().cpu()) for lo in losses])
-        print()
 
         self.model.eval()
         corr_P = self.P / self.P.sum()
         corr_F = self.F
         # corr_F = knn_dist(corr_F) if self.perfect_alignment else knn_sim(corr_F)
-        corr_F = torch.from_numpy(corr_F).float().to(self.device)
-        corr_F /= corr_F.sum()
+        corr_F /= corr_F.absolute().max()
         corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
         integrated_data, _ = self.model(*self.dataset, corr=corr)
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]

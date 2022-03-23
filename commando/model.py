@@ -16,19 +16,18 @@ class edModel(nn.Module):
             self.encoders.append(nn.Sequential(
                 nn.Linear(input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
-                nn.LeakyReLU(0.1, True),
+                nn.LeakyReLU(),
 
                 nn.Linear(2*input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
-                nn.LeakyReLU(0.1, True),
+                nn.LeakyReLU(),
 
                 nn.Linear(2*input_dim[i], input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
-                nn.LeakyReLU(0.1, True),
+                nn.LeakyReLU(),
 
                 nn.Linear(input_dim[i], output_dim),
                 nn.BatchNorm1d(output_dim),
-                nn.LeakyReLU(0.1, True),
             ))
         self.encoders = nn.ModuleList(self.encoders)
 
@@ -37,19 +36,18 @@ class edModel(nn.Module):
             self.decoders.append(nn.Sequential(
                 nn.Linear(output_dim, input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
-                nn.LeakyReLU(0.1, True),
+                nn.LeakyReLU(),
 
                 nn.Linear(input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
-                nn.LeakyReLU(0.1, True),
+                nn.LeakyReLU(),
 
                 nn.Linear(2*input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
-                nn.LeakyReLU(0.1, True),
+                nn.LeakyReLU(),
 
                 nn.Linear(2*input_dim[i], input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
-                nn.LeakyReLU(0.1, True),
             ))
         self.decoders = nn.ModuleList(self.decoders)
 
