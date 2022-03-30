@@ -1,4 +1,5 @@
 import contextlib
+import math
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,7 +11,7 @@ from sklearn.metrics import silhouette_samples, silhouette_score
 import torch
 
 from .commando import ComManDo
-from .utilities import ensure_list, predict_nn
+from .utilities import ensure_list, predict_nn, SimpleDualEncoder
 
 
 def test_partial(
@@ -68,8 +69,10 @@ def generate_figure(
     integrated_use_pca=False,
     # Remove Visualizations
     exclude_predict=[],
-    skip_partial=False,
-    skip_nn=False,
+    skip_partial=True,
+    skip_nn=True,
+    skip_simple=False,
+    use_raw_in_integrated=True,
 ):
     """Compares ComManDo with ``alg_results``"""
     # asddf: Legends may be wrong unless sorted
@@ -98,54 +101,90 @@ def generate_figure(
         for i in range(num_modalities)
     ]
 
-    # Number of rows
-    height_numerators = [
-        1,
-        1,
-        1,
-        1,
-        (num_modalities**2 - num_modalities) - len(exclude_predict)
-    ]
-    # Number of columns
-    height_denominators = [
-        (num_modalities),
-        (num_modalities * num_algorithms),
-        (2 - skip_partial),
-        (num_modalities),
-        (5 if not skip_nn else 4),
-    ]
-    # Control for min/max single-row height
+    # Sizing
+    height_manual_scale = []
+    height_numerators = []
+    height_denominators = []
+    # # Raw Data
+    # height_numerators.append(1)
+    # height_denominators.append(num_modalities)
+    # Integrated Data
+    height_manual_scale.append(1)
+    height_numerators.append(math.ceil((num_algorithms + use_raw_in_integrated) / 3))
+    height_denominators.append(
+        min(num_algorithms + use_raw_in_integrated, 3) * num_modalities)
+    # Accuracy by Partial
+    height_manual_scale.append(.5)
+    height_numerators.append(1)
+    height_denominators.append(2 - skip_partial)
+    # Silhouette Value Boxplots
+    height_manual_scale.append(.5)
+    height_numerators.append(1)
+    height_denominators.append(num_modalities)
+    # Reconstruct Modality
+    height_manual_scale.append(1)
+    height_numerators.append((num_modalities**2 - num_modalities) - len(exclude_predict))
+    height_denominators.append(4 + (not skip_nn) + (not skip_simple))
+    # Ratios
     height_denominators = [
         min(1/size_bound[0], max(1/size_bound[1], x)) for x in height_denominators]
-    height_ratios = [n/d for n, d in zip(height_numerators, height_denominators)]
+    height_ratios = [
+        s*n/d for s, n, d in zip(height_manual_scale, height_numerators, height_denominators)]
     figsize = (scale, scale * vertical_scale * sum(height_ratios))
-    fig = plt.figure(constrained_layout=True, figsize=figsize)
-    subfigs = fig.subfigures(5, 1, height_ratios=height_ratios, wspace=.07)
 
-    # Raw Data
-    cfig = subfigs[0]
-    for i in range(num_modalities):
-        ax = cfig.add_subplot(1, num_modalities, i+1)  # , projection='3d'
-        pca_data = PCA(n_components=2).fit_transform(dataset[i])
-        for label in np.unique(np.concatenate(labels)):
-            pca_data_subset = np.transpose(pca_data[labels[i] == label])
-            ax.scatter(*pca_data_subset, s=5., label=label)
-            ax.set_aspect('equal', adjustable='box')
-        title = dataset_names[i]
-        ax.set_title(title)
-        ax.set_xlabel('PCA-1')
-        ax.set_ylabel('PCA-2')
-        # ax.set_zlabel('PCA-3')
-    ax.legend()
-    fig.suptitle('Raw Data')
+    fig = plt.figure(figsize=figsize, constrained_layout=True)
+    fig.suptitle('JAMIE Performance')
+    subfigs = fig.subfigures(len(height_ratios), 1, height_ratios=height_ratios, wspace=.07)
+    subfig_idx = 0
+    # gridspec = subfigs[0]._subplotspec.get_gridspec()
+
+    # # Raw Data
+    # cfig = subfigs[subfig_idx]
+    # subfig_idx += 1
+    # for i in range(num_modalities):
+    #     ax = cfig.add_subplot(1, num_modalities, i+1)  # , projection='3d'
+    #     pca_data = PCA(n_components=2).fit_transform(dataset[i])
+    #     for label in np.unique(np.concatenate(labels)):
+    #         pca_data_subset = np.transpose(pca_data[labels[i] == label])
+    #         ax.scatter(*pca_data_subset, s=5., label=label)
+    #         ax.set_aspect('equal', adjustable='box')
+    #     title = dataset_names[i]
+    #     ax.set_title(title)
+    #     ax.set_xlabel('PCA-1')
+    #     ax.set_ylabel('PCA-2')
+    #     # ax.set_zlabel('PCA-3')
+    # ax.legend()
+    # fig.suptitle('Raw Data')
 
     # Integrated Data
-    cfig = subfigs[1]
-    csubfigs = cfig.subfigures(1, num_algorithms, wspace=.07)
-    for csubfig, j in zip(csubfigs, range(num_algorithms)):
+    cfig = subfigs[subfig_idx]
+    subfig_idx += 1
+    csubfigs = cfig.subfigures(
+        math.ceil((num_algorithms + use_raw_in_integrated) / 3),
+        min(num_algorithms + use_raw_in_integrated, 3),
+        wspace=.07,
+    ).flatten()
+    for csubfig, j in zip(csubfigs, range(num_algorithms + use_raw_in_integrated)):
         for i in range(num_modalities):
-            ax = csubfig.add_subplot(1, num_modalities, i+1)  # , projection='3d'
-            plot_data = integrated_data[j][i]
+            if use_raw_in_integrated and j == 0:
+                ax = csubfig.add_subplot(1, num_modalities, i+1)
+                plot_data = PCA(n_components=2).fit_transform(dataset[i])
+                for label in np.unique(np.concatenate(labels)):
+                    data_subset = np.transpose(plot_data[labels[i] == label])[:2, :]
+                    ax.scatter(*data_subset, s=5., label=label)
+                title = dataset_names[i]
+                ax.set_title(title)
+                type_text = 'PCA'
+                ax.set_xlabel(type_text + '-1')
+                ax.set_ylabel(type_text + '-2')
+                if i == 0:
+                    ax.legend()
+                suptitle = 'Raw Data'
+                continue
+
+            ax = csubfig.add_subplot(1, num_modalities, i+1)
+            # projection='3d'
+            plot_data = integrated_data[j-use_raw_in_integrated][i]
             if integrated_use_pca:
                 plot_data = PCA(n_components=2).fit_transform(plot_data)
             for label in np.unique(np.concatenate(labels)):
@@ -160,11 +199,13 @@ def generate_figure(
             ax.set_xlabel(type_text + '-1')
             ax.set_ylabel(type_text + '-2')
             # ax.set_zlabel('Latent Feature 3')
-        csubfig.suptitle(integrated_alg_names[j])
-    cfig.suptitle('Integrated Embeddings')
+            suptitle = integrated_alg_names[j-use_raw_in_integrated]
+        csubfig.suptitle(suptitle)
+    # cfig.suptitle('Integrated Embeddings')
 
     # Accuracy by Partial
-    cfig = subfigs[2]
+    cfig = subfigs[subfig_idx]
+    subfig_idx += 1
     csubfigs = ensure_list(
         cfig.subfigures(1, 2 if not skip_partial else 1, wspace=.07))
     csubfig_idx = 0
@@ -221,7 +262,8 @@ def generate_figure(
     # cfig.suptitle('Distance of Medoid by Cell Type')
 
     # Silhouette Value Boxplots
-    cfig = subfigs[3]
+    cfig = subfigs[subfig_idx]
+    subfig_idx += 1
     axs = cfig.subplots(1, num_modalities)
     for i, ax in enumerate(axs):
         # Calculate coefficients
@@ -249,7 +291,8 @@ def generate_figure(
     cfig.suptitle('Silhouette Score by Cell Type')
 
     # Reconstruct Modality
-    cfig = subfigs[4]
+    cfig = subfigs[subfig_idx]
+    subfig_idx += 1
     csubfigs = ensure_list(cfig.subfigures(
         (num_modalities**2 - num_modalities) - len(exclude_predict),
         1,
@@ -261,15 +304,12 @@ def generate_figure(
             if i == j or ((i, j) in exclude_predict):
                 continue
             csubfig = csubfigs[fig_idx]
-            axs = csubfig.subplots(1, 5 if not skip_nn else 4)
+            axs = csubfig.subplots(1, 4 + (not skip_nn) + (not skip_simple))
             fig_idx += 1
 
             csubfig.suptitle(f'{dataset_names[i]} -> {dataset_names[j]}')
 
-            predicted = cm_trained.model.decoders[j](
-                cm_trained.model.encoders[i](
-                    torch.tensor(dataset[i]).float()
-                )).detach().cpu().numpy()
+            predicted = cm_trained.modal_predict(dataset[i], i)
             actual = dataset[j]
 
             # Setup
@@ -329,6 +369,23 @@ def generate_figure(
             axs[axi].set_ylabel('Predicted Value')
             axi += 1
 
+            # Simple model
+            if not skip_simple:
+                simple_cm = ComManDo(
+                    model_class=SimpleDualEncoder, output_dim=cm_data[0].shape[1])
+                with contextlib.redirect_stdout(None):
+                    simple_cm.fit_transform(dataset=dataset)
+                average_weights = (
+                    simple_cm.model.encoders[0][0].weight.detach().cpu().numpy()
+                    + np.transpose(simple_cm.model.decoders[0][0].weight.detach().cpu().numpy())
+                ).sum(axis=0) / 2
+                axs[axi].bar(range(len(average_weights)), average_weights)
+                axs[axi].set_title('Weight by Feature')
+                axs[axi].set_xlabel('Feature')
+                axs[axi].set_ylabel('Linear Encoding Weight')
+                axi += 1
     cfig.suptitle('Modality Prediction')
 
+    # plt.tight_layout()
+    # plt.subplots_adjust(top=1)
     plt.show()

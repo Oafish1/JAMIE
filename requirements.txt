@@ -4,47 +4,136 @@
 #
 #    pip-compile
 #
+anndata==0.8.0
+    # via
+    #   ComManDo (setup.py)
+    #   scanpy
 cycler==0.10.0
     # via matplotlib
+h5py==3.6.0
+    # via
+    #   anndata
+    #   scanpy
 joblib==1.0.1
-    # via scikit-learn
+    # via
+    #   pynndescent
+    #   scanpy
+    #   scikit-learn
 kiwisolver==1.3.2
     # via matplotlib
+llvmlite==0.38.0
+    # via
+    #   numba
+    #   pynndescent
 matplotlib==3.4.3
-    # via ComManDo (setup.py)
+    # via
+    #   ComManDo (setup.py)
+    #   scanpy
+    #   seaborn
+natsort==8.1.0
+    # via
+    #   anndata
+    #   scanpy
+networkx==2.7.1
+    # via scanpy
+numba==0.55.1
+    # via
+    #   pynndescent
+    #   scanpy
+    #   umap-learn
+numexpr==2.8.1
+    # via tables
 numpy==1.21.2
     # via
     #   ComManDo (setup.py)
+    #   anndata
+    #   h5py
     #   matplotlib
+    #   numba
+    #   numexpr
+    #   pandas
+    #   patsy
+    #   scanpy
     #   scikit-learn
     #   scikit-learn-extra
     #   scipy
+    #   seaborn
+    #   statsmodels
+    #   tables
     #   torchvision
+    #   umap-learn
+packaging==21.3
+    # via
+    #   anndata
+    #   numexpr
+    #   scanpy
+    #   statsmodels
+    #   tables
+pandas==1.4.1
+    # via
+    #   anndata
+    #   scanpy
+    #   seaborn
+    #   statsmodels
+patsy==0.5.2
+    # via
+    #   scanpy
+    #   statsmodels
 pillow==8.3.2
     # via
     #   matplotlib
     #   torchvision
+pynndescent==0.5.6
+    # via umap-learn
 pyparsing==2.4.7
-    # via matplotlib
+    # via
+    #   matplotlib
+    #   packaging
 python-dateutil==2.8.2
-    # via matplotlib
+    # via
+    #   matplotlib
+    #   pandas
+pytz==2022.1
+    # via pandas
+scanpy==1.8.2
+    # via ComManDo (setup.py)
 scikit-learn==1.0
     # via
+    #   pynndescent
+    #   scanpy
     #   scikit-learn-extra
     #   sklearn
+    #   umap-learn
 scikit-learn-extra==0.2.0
     # via ComManDo (setup.py)
 scipy==1.7.1
     # via
     #   ComManDo (setup.py)
+    #   anndata
+    #   pynndescent
+    #   scanpy
     #   scikit-learn
     #   scikit-learn-extra
+    #   seaborn
+    #   statsmodels
+    #   umap-learn
+seaborn==0.11.2
+    # via scanpy
+sinfo==0.3.4
+    # via scanpy
 six==1.16.0
     # via
     #   cycler
+    #   patsy
     #   python-dateutil
 sklearn==0.0
     # via ComManDo (setup.py)
+statsmodels==0.13.2
+    # via scanpy
+stdlib-list==0.8.0
+    # via sinfo
+tables==3.7.0
+    # via scanpy
 threadpoolctl==3.0.0
     # via scikit-learn
 torch==1.9.1
@@ -53,9 +142,18 @@ torch==1.9.1
     #   torchvision
 torchvision==0.10.1
     # via ComManDo (setup.py)
+tqdm==4.63.1
+    # via
+    #   scanpy
+    #   umap-learn
 typing-extensions==3.10.0.2
     # via torch
 umap==0.1.1
     # via ComManDo (setup.py)
+umap-learn==0.5.2
+    # via scanpy
 unioncom==0.4.0
     # via ComManDo (setup.py)
+
+# The following packages are considered to be unsafe in a requirements file:
+# setuptools

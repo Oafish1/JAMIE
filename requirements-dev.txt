@@ -6,6 +6,11 @@
 #
 -e file:.
     # via -r requirements-dev.in
+anndata==0.8.0
+    # via
+    #   -c requirements.txt
+    #   commando
+    #   scanpy
 attrs==21.2.0
     # via pytest
 click==8.0.1
@@ -24,33 +29,96 @@ flake8-docstrings==1.6.0
     # via commando
 flake8-import-order==0.18.1
     # via commando
+h5py==3.6.0
+    # via
+    #   -c requirements.txt
+    #   anndata
+    #   scanpy
 iniconfig==1.1.1
     # via pytest
 joblib==1.0.1
     # via
     #   -c requirements.txt
+    #   pynndescent
+    #   scanpy
     #   scikit-learn
 kiwisolver==1.3.2
     # via
     #   -c requirements.txt
     #   matplotlib
+llvmlite==0.38.0
+    # via
+    #   -c requirements.txt
+    #   numba
+    #   pynndescent
 matplotlib==3.4.3
     # via
     #   -c requirements.txt
     #   commando
+    #   scanpy
+    #   seaborn
 mccabe==0.6.1
     # via flake8
+natsort==8.1.0
+    # via
+    #   -c requirements.txt
+    #   anndata
+    #   scanpy
+networkx==2.7.1
+    # via
+    #   -c requirements.txt
+    #   scanpy
+numba==0.55.1
+    # via
+    #   -c requirements.txt
+    #   pynndescent
+    #   scanpy
+    #   umap-learn
+numexpr==2.8.1
+    # via
+    #   -c requirements.txt
+    #   tables
 numpy==1.21.2
     # via
     #   -c requirements.txt
+    #   anndata
     #   commando
+    #   h5py
     #   matplotlib
+    #   numba
+    #   numexpr
+    #   pandas
+    #   patsy
+    #   scanpy
     #   scikit-learn
     #   scikit-learn-extra
     #   scipy
+    #   seaborn
+    #   statsmodels
+    #   tables
     #   torchvision
-packaging==21.0
-    # via pytest
+    #   umap-learn
+packaging==21.3
+    # via
+    #   -c requirements.txt
+    #   anndata
+    #   numexpr
+    #   pytest
+    #   scanpy
+    #   statsmodels
+    #   tables
+pandas==1.4.1
+    # via
+    #   -c requirements.txt
+    #   anndata
+    #   scanpy
+    #   seaborn
+    #   statsmodels
+patsy==0.5.2
+    # via
+    #   -c requirements.txt
+    #   scanpy
+    #   statsmodels
 pep517==0.11.0
     # via pip-tools
 pillow==8.3.2
@@ -72,6 +140,10 @@ pydocstyle==6.1.1
     # via flake8-docstrings
 pyflakes==2.3.1
     # via flake8
+pynndescent==0.5.6
+    # via
+    #   -c requirements.txt
+    #   umap-learn
 pyparsing==2.4.7
     # via
     #   -c requirements.txt
@@ -87,11 +159,23 @@ python-dateutil==2.8.2
     # via
     #   -c requirements.txt
     #   matplotlib
+    #   pandas
+pytz==2022.1
+    # via
+    #   -c requirements.txt
+    #   pandas
+scanpy==1.8.2
+    # via
+    #   -c requirements.txt
+    #   commando
 scikit-learn==1.0
     # via
     #   -c requirements.txt
+    #   pynndescent
+    #   scanpy
     #   scikit-learn-extra
     #   sklearn
+    #   umap-learn
 scikit-learn-extra==0.2.0
     # via
     #   -c requirements.txt
@@ -99,13 +183,28 @@ scikit-learn-extra==0.2.0
 scipy==1.7.1
     # via
     #   -c requirements.txt
+    #   anndata
     #   commando
+    #   pynndescent
+    #   scanpy
     #   scikit-learn
     #   scikit-learn-extra
+    #   seaborn
+    #   statsmodels
+    #   umap-learn
+seaborn==0.11.2
+    # via
+    #   -c requirements.txt
+    #   scanpy
+sinfo==0.3.4
+    # via
+    #   -c requirements.txt
+    #   scanpy
 six==1.16.0
     # via
     #   -c requirements.txt
     #   cycler
+    #   patsy
     #   python-dateutil
 sklearn==0.0
     # via
@@ -113,6 +212,18 @@ sklearn==0.0
     #   commando
 snowballstemmer==2.1.0
     # via pydocstyle
+statsmodels==0.13.2
+    # via
+    #   -c requirements.txt
+    #   scanpy
+stdlib-list==0.8.0
+    # via
+    #   -c requirements.txt
+    #   sinfo
+tables==3.7.0
+    # via
+    #   -c requirements.txt
+    #   scanpy
 threadpoolctl==3.0.0
     # via
     #   -c requirements.txt
@@ -132,6 +243,11 @@ torchvision==0.10.1
     # via
     #   -c requirements.txt
     #   commando
+tqdm==4.63.1
+    # via
+    #   -c requirements.txt
+    #   scanpy
+    #   umap-learn
 typing-extensions==3.10.0.2
     # via
     #   -c requirements.txt
@@ -140,6 +256,10 @@ umap==0.1.1
     # via
     #   -c requirements.txt
     #   commando
+umap-learn==0.5.2
+    # via
+    #   -c requirements.txt
+    #   scanpy
 unioncom==0.4.0
     # via
     #   -c requirements.txt

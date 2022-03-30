@@ -1,3 +1,9 @@
+# 3.5.1
+- Added custom model functionality with `model_class` argument
+- Added simple model weight visualization to `generate_figure`
+- Reruns on various levels of alignment
+- Revised `generate_figure` formatting and standardized module format
+
 # 3.5.0
 - Added `integrated_use_pca` option for `generate_figure`
 - Experimented with new losses
@@ -19,6 +25,7 @@
 - Revise loss bookkeeping
 - Fix F normalization
 - Fix model normalization issue
+- Remove KNN usage in main model
 - Reruns with higher construction losses
 
 # 3.4.0

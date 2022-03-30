@@ -38,6 +38,7 @@ class ComManDo(uc.UnionCom):
         PF_Ratio=1,
         in_place=False,
         loss_weights=None,
+        model_class=edModel,
         use_early_stop=True,
         min_increment=.1,
         max_steps_without_increment=500,
@@ -48,6 +49,7 @@ class ComManDo(uc.UnionCom):
         self.PF_Ratio = PF_Ratio
         self.in_place = in_place
         self.loss_weights = loss_weights
+        self.model_class = model_class
 
         self.use_early_stop = False
         self.min_increment = .1
@@ -316,7 +318,7 @@ class ComManDo(uc.UnionCom):
         # self.batch_size = 177
 
         timer = time_logger()
-        self.model = edModel(self.col, self.output_dim).to(self.device)
+        self.model = self.model_class(self.col, self.output_dim).to(self.device)
         optimizer = optim.RMSprop(self.model.parameters(), lr=self.lr)
 
         def sim_dist_func(a, b):
@@ -545,6 +547,16 @@ class ComManDo(uc.UnionCom):
         print("Finished Mapping!")
         timer.aggregate()
         return integrated_data
+
+    def modal_predict(self, data, modality):
+        """Predict the opposite modality from dataset ``data`` in modality ``modality``"""
+        assert self.model is not None, 'Model must be trained before modal prediction.'
+
+        to_modality = (modality + 1) % self.dataset_num
+        return self.model.decoders[to_modality](
+            self.model.encoders[modality](
+                torch.tensor(data).float()
+            )).detach().cpu().numpy()
 
     def compute_distances(self):
         """Helper function to compute distances for each dataset"""
