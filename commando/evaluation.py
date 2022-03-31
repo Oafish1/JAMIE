@@ -141,29 +141,31 @@ class generate_figure():
             for i in range(self.num_modalities)
         ]
 
+        default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        self.colors = np.array(default_colors[:self.num_algorithms])
+
         # Sizing
         height_manual_scale = []
         height_numerators = []
         height_denominators = []
-        # # Raw Data
-        # height_numerators.append(1)
-        # height_denominators.append(self.num_modalities)
+        # Would be nice if this could be done post
         # Integrated Data
         height_manual_scale.append(1)
-        height_numerators.append(math.ceil((self.num_algorithms + self.use_raw_in_integrated) / 3))
+        height_numerators.append(math.ceil(max(self.group_counts) / self.integrated_rows))
         height_denominators.append(
-            min(self.num_algorithms + self.use_raw_in_integrated, 3) * self.num_modalities)
-        # Accuracy by Partial
-        height_manual_scale.append(.5)
+            self.num_modalities * self.integrated_rows * self.num_groups)
+        # Metrics
+        height_manual_scale.append(.75)
         height_numerators.append(1)
-        height_denominators.append(2 - self.skip_partial)
+        height_denominators.append((2 - self.skip_partial) * self.num_groups)
         # Silhouette Value Boxplots
-        height_manual_scale.append(.5)
+        height_manual_scale.append(1)
         height_numerators.append(1)
-        height_denominators.append(self.num_modalities)
+        height_denominators.append(self.num_modalities * self.num_groups)
         # Reconstruct Modality
         height_manual_scale.append(1)
-        height_numerators.append((self.num_modalities**2 - self.num_modalities) - len(self.exclude_predict))
+        height_numerators.append(
+            (self.num_modalities**2 - self.num_modalities) - len(self.exclude_predict))
         height_denominators.append(4 + (not self.skip_nn) + (not self.skip_simple))
         # Ratios
         height_denominators = [
@@ -190,18 +192,53 @@ class generate_figure():
 
         # Accuracy by Partial
         cfig = subfigs[subfig_idx]
-        self._plot_accuracy_metrics(cfig)
+        csubfigs = ensure_list(cfig.subfigures(1, self.num_groups))
+        for i, group in enumerate(self.unique_groups):
+            self._plot_accuracy_metrics(csubfigs[i], group_filter=group)
         subfig_idx += 1
 
         # Silhouette Value Boxplots
         cfig = subfigs[subfig_idx]
-        self._plot_silhouette_value_boxplots(cfig)
+        csubfigs = ensure_list(cfig.subfigures(1, self.num_groups))
+        for i, group in enumerate(self.unique_groups):
+            self._plot_silhouette_value_boxplots(csubfigs[i], group_filter=group)
         subfig_idx += 1
 
         # Reconstruct Modality
         cfig = subfigs[subfig_idx]
         self._plot_reconstruct_modality(cfig)
         subfig_idx += 1
+
+    def _get_integrated_group(self, group_filter=None):
+        num_algorithms = (
+            sum(self.alg_groups == group_filter)
+            if group_filter is not None
+            else self.num_algorithms
+        )
+        integrated_data = (
+            self.integrated_data[self.alg_groups == group_filter]
+            if group_filter is not None
+            else self.integrated_data
+        )
+        integrated_alg_names = (
+            self.integrated_alg_names[self.alg_groups == group_filter]
+            if group_filter is not None
+            else self.integrated_alg_names
+        )
+        colors = (
+            self.colors[self.alg_groups == group_filter]
+            if group_filter is not None
+            else self.colors
+        )
+        use_raw_in_integrated = (
+            self.use_raw_in_integrated and group_filter == self.raw_data_group)
+        return (
+            num_algorithms,
+            integrated_data,
+            integrated_alg_names,
+            colors,
+            use_raw_in_integrated,
+        )
 
     def _plot_raw_data(self, cfig):
         num_modalities = self.num_modalities
@@ -210,44 +247,28 @@ class generate_figure():
         dataset_names = self.dataset_names
 
         for i in range(num_modalities):
-            ax = cfig.add_subplot(1, num_modalities, i+1)  # , projection='3d'
+            ax = cfig.add_subplot(1, num_modalities, i+1)
             pca_data = PCA(n_components=2).fit_transform(dataset[i])
             for label in np.unique(np.concatenate(labels)):
                 pca_data_subset = np.transpose(pca_data[labels[i] == label])
                 ax.scatter(*pca_data_subset, s=5., label=label)
-                ax.set_aspect('equal', adjustable='box')
             title = dataset_names[i]
             ax.set_title(title)
             ax.set_xlabel('PCA-1')
             ax.set_ylabel('PCA-2')
-            # ax.set_zlabel('PCA-3')
+            ax.set_aspect('equal', adjustable='box')
         ax.legend()
         # fig.suptitle('Raw Data')
 
     def _plot_integrated_data(self, cfig, group_filter=None):
-        num_algorithms = (
-            sum(self.alg_groups == group_filter)
-            if group_filter is not None
-            else self.num_algorithms
-        )
-        use_raw_in_integrated = (
-            self.use_raw_in_integrated and group_filter == self.raw_data_group)
         dataset = self.dataset
         labels = self.labels
         dataset_names = self.dataset_names
         num_modalities = self.num_modalities
-        integrated_data = (
-            self.integrated_data[self.alg_groups == group_filter]
-            if group_filter is not None
-            else self.integrated_data
-        )
         integrated_use_pca = self.integrated_use_pca
-        integrated_alg_names = (
-            self.integrated_alg_names[self.alg_groups == group_filter]
-            if group_filter is not None
-            else self.integrated_alg_names
-        )
         integrated_rows = self.integrated_rows
+        num_algorithms, integrated_data, integrated_alg_names, _, use_raw_in_integrated = (
+            self._get_integrated_group(group_filter))
 
         csubfigs = cfig.subfigures(
             math.ceil((num_algorithms + use_raw_in_integrated) / integrated_rows),
@@ -257,16 +278,17 @@ class generate_figure():
         for csubfig, j in zip(csubfigs, range(num_algorithms + use_raw_in_integrated)):
             for i in range(num_modalities):
                 if use_raw_in_integrated and j == 0:
-                    ax = csubfig.add_subplot(1, num_modalities, i+1)
+                    ax = csubfig.add_subplot(1, num_modalities, i+1)  # , projection='3d'
                     plot_data = PCA(n_components=2).fit_transform(dataset[i])
                     for label in np.unique(np.concatenate(labels)):
                         data_subset = np.transpose(plot_data[labels[i] == label])[:2, :]
                         ax.scatter(*data_subset, s=5., label=label)
                     title = dataset_names[i]
                     ax.set_title(title)
-                    type_text = 'PCA'
+                    type_text = 'PC'
                     ax.set_xlabel(type_text + '-1')
                     ax.set_ylabel(type_text + '-2')
+                    # ax.set_aspect('equal', adjustable='box')
                     if i == 0:
                         ax.legend()
                     suptitle = 'Raw Data'
@@ -283,25 +305,25 @@ class generate_figure():
                 title = dataset_names[i]
                 ax.set_title(title)
                 if integrated_use_pca:
-                    type_text = 'PCA'
+                    type_text = 'PC'
                 else:
-                    type_text = 'Latent Feature'
+                    type_text = 'Feature'
                 ax.set_xlabel(type_text + '-1')
                 ax.set_ylabel(type_text + '-2')
+                # ax.set_aspect('equal', adjustable='box')
                 # ax.set_zlabel('Latent Feature 3')
                 suptitle = integrated_alg_names[j-use_raw_in_integrated]
             csubfig.suptitle(suptitle)
         # cfig.suptitle('Integrated Embeddings')
 
-    def _plot_accuracy_metrics(self, cfig):
+    def _plot_accuracy_metrics(self, cfig, group_filter=None):
         skip_partial = self.skip_partial
         dataset = self.dataset
         types = self.types
-        integrated_alg_names = self.integrated_alg_names
         dataset_names = self.dataset_names
-        num_algorithms = self.num_algorithms
         cm_trained = self.cm_trained
-        integrated_data = self.integrated_data
+        num_algorithms, integrated_data, integrated_alg_names, colors, _ = (
+            self._get_integrated_group(group_filter))
 
         csubfigs = ensure_list(
             cfig.subfigures(1, 2 if not skip_partial else 1, wspace=.07))
@@ -325,7 +347,7 @@ class generate_figure():
             'FOSCTTM': [],
         }
         for name in dataset_names:
-            acc_dict['Silhouette Score:\n' + name] = []
+            acc_dict['Silhouette:\n' + name] = []
         for i in range(num_algorithms):
             with contextlib.redirect_stdout(None):
                 acc_dict['Label Transfer Accuracy'].append(
@@ -333,23 +355,22 @@ class generate_figure():
                 acc_dict['FOSCTTM'].append(
                     cm_trained.test_closer(integrated_data[i]))
                 for j, name in enumerate(dataset_names):
-                    acc_dict['Silhouette Score:\n' + name].append(
+                    acc_dict['Silhouette:\n' + name].append(
                         silhouette_score(integrated_data[i][j], types[j]))
         df = pd.DataFrame(acc_dict).melt(
             id_vars=list(acc_dict.keys())[:1],
             value_vars=list(acc_dict.keys())[1:])
-        sns.barplot(data=df, x='variable', y='value', hue='Algorithm', ax=ax)
+        sns.barplot(data=df, x='variable', y='value', hue='Algorithm', ax=ax, palette=colors)
         ax.set_xlabel(None)
         ax.set_ylabel(None)
         ax.set_title('Metric by Algorithm')
         # cfig.suptitle('Miscellaneous Accuracy Statistics')
         csubfig_idx += 1
 
-    def _plot_distance_by_cell(self, cfig):
-        num_algorithms = self.num_algorithms
-        integrated_data = self.integrated_data
+    def _plot_distance_by_cell(self, cfig, group_filter=None):
         labels = self.labels
-        integrated_alg_names = self.integrated_alg_names
+        _, integrated_data, integrated_alg_names, _, _ = (
+            self._get_integrated_group(group_filter))
 
         axs = cfig.subplots(1, num_algorithms)
         for ax, i in zip(axs, range(num_algorithms)):
@@ -362,14 +383,13 @@ class generate_figure():
             ax.set_title(integrated_alg_names[i])
         cfig.suptitle('Distance of Medoid by Cell Type')
 
-    def _plot_silhouette_value_boxplots(self, cfig):
+    def _plot_silhouette_value_boxplots(self, cfig, group_filter=None):
         num_modalities = self.num_modalities
-        num_algorithms = self.num_algorithms
-        integrated_data = self.integrated_data
         types = self.types
         labels = self.labels
-        integrated_alg_names = self.integrated_alg_names
         dataset_names = self.dataset_names
+        num_algorithms, integrated_data, integrated_alg_names, colors, _ = (
+            self._get_integrated_group(group_filter))
 
         axs = cfig.subplots(1, num_modalities)
         for i, ax in enumerate(axs):
@@ -392,6 +412,7 @@ class generate_figure():
                 y='Silhouette Coefficient',
                 hue='Algorithm',
                 ax=ax,
+                palette=colors,
             )
             ax.set_title(dataset_names[i])
             ax.legend([], [], frameon=False)
@@ -449,7 +470,7 @@ class generate_figure():
                 for label in np.unique(np.concatenate(labels)):
                     subdata = np.transpose(predicted[:, feat][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
-                axs[axi].set_title('ComManDo Predicted')
+                axs[axi].set_title('JAMIE Translated')
                 axs[axi].set_xlabel('Latent Feature 1')
                 axs[axi].set_ylabel('Latent Feature 2')
                 axi += 1

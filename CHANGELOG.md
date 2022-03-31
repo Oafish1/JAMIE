@@ -1,6 +1,6 @@
-# 3.5.2 (In Progress)
-- Changed `generate_figure` to a class object
+# 3.5.2
 - Added group partitioning functionality to `generate_figure`
+- Refactored `generate_figure` to a class object
 
 # 3.5.1
 - Added custom model functionality with `model_class` argument
