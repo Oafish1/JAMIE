@@ -205,9 +205,9 @@ def uc_visualize(data, data_integrated, datatype=None, mode=None):
 
 
 def ensure_list(x):
-    if not isinstance(x, np.ndarray):
-        return [x]
-    return x
+    if not (isinstance(x, np.ndarray) or isinstance(x, type([]))):
+        return np.array([x])
+    return np.array(x)
 
 
 class SimpleModel(nn.Module):
