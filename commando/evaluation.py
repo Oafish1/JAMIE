@@ -52,6 +52,10 @@ def test_partial(
 
 
 class generate_figure():
+    """
+    Class for visualizing results of multiple algorithms, performing embedding,
+    correspondence analysis, and modal translation.
+    """
     def __init__(
         self,
         # Data
@@ -73,16 +77,17 @@ class generate_figure():
         integrated_rows=3,
         # Simulations
         simple_num_features=32,
+        num_best_reconstructed_features=3,
         # Remove Visualizations
         exclude_predict=[],
         skip_partial=True,
         skip_nn=True,
-        skip_simple=False,
+        skip_simple=True,
         use_raw_in_integrated=True,
     ):
-        """Compares ComManDo with ``integrated_data``"""
         # asddf: Legends may be wrong unless sorted
-        assert len(integrated_data) == len(integrated_alg_names), '``alg_*`` params must correspond.'
+        assert len(integrated_data) == len(integrated_alg_names), (
+            '``alg_*`` params must correspond.')
 
         # Style
         plt.rcParams.update({
@@ -117,6 +122,7 @@ class generate_figure():
         self.integrated_rows = integrated_rows
         # Simulations
         self.simple_num_features = simple_num_features
+        self.num_best_reconstructed_features = num_best_reconstructed_features
         # Remove Visualizations
         self.exclude_predict = exclude_predict
         self.skip_partial = skip_partial
@@ -144,30 +150,24 @@ class generate_figure():
         default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         self.colors = np.array(default_colors[:self.num_algorithms])
 
+        # What to plot
+        to_run = (
+            lambda x: self._group_plot(x, self._plot_integrated_data),
+            lambda x: self._group_plot(x, self._plot_accuracy_metrics),
+            lambda x: self._group_plot(x, self._plot_silhouette_value_boxplots),
+            self._plot_reconstruct_modality,
+        )
+        to_run_size = (
+            self._get_integrated_data_shape(),
+            self._get_accuracy_metrics_shape(),
+            self._get_silhouette_value_boxplots_shape(),
+            self._get_reconstruct_modality_shape(),
+        )
+
         # Sizing
-        height_manual_scale = []
-        height_numerators = []
-        height_denominators = []
-        # Would be nice if this could be done post
-        # Integrated Data
-        height_manual_scale.append(1)
-        height_numerators.append(math.ceil(max(self.group_counts) / self.integrated_rows))
-        height_denominators.append(
-            self.num_modalities * self.integrated_rows * self.num_groups)
-        # Metrics
-        height_manual_scale.append(.75)
-        height_numerators.append(1)
-        height_denominators.append((2 - self.skip_partial) * self.num_groups)
-        # Silhouette Value Boxplots
-        height_manual_scale.append(1)
-        height_numerators.append(1)
-        height_denominators.append(self.num_modalities * self.num_groups)
-        # Reconstruct Modality
-        height_manual_scale.append(1)
-        height_numerators.append(
-            (self.num_modalities**2 - self.num_modalities) - len(self.exclude_predict))
-        height_denominators.append(4 + (not self.skip_nn) + (not self.skip_simple))
-        # Ratios
+        height_manual_scale = [shape[0] for shape in to_run_size]
+        height_numerators = [shape[1] for shape in to_run_size]
+        height_denominators = [shape[2] for shape in to_run_size]
         height_denominators = [
             min(1/size_bound[0], max(1/size_bound[1], x)) for x in height_denominators]
         height_ratios = [
@@ -176,38 +176,20 @@ class generate_figure():
 
         # Create figure
         fig = plt.figure(figsize=figsize, constrained_layout=True)
-        fig.suptitle(' ')  # To prevent cutoff
-        # fig.suptitle('JAMIE Performance')
+        fig.suptitle(' ')
         subfigs = ensure_list(
             fig.subfigures(len(height_ratios), 1, height_ratios=height_ratios, wspace=.07))
-        subfig_idx = 0
         # gridspec = subfigs[0]._subplotspec.get_gridspec()
 
-        # Integrated Data
-        cfig = subfigs[subfig_idx]
+        # Plot
+        assert len(subfigs) == len(to_run), '``to_run`` and ``to_run_size`` must match in shape'
+        for cfig, to_run_func in zip(subfigs, to_run):
+            to_run_func(cfig)
+
+    def _group_plot(self, cfig, func):
         csubfigs = ensure_list(cfig.subfigures(1, self.num_groups))
         for i, group in enumerate(self.unique_groups):
-            self._plot_integrated_data(csubfigs[i], group_filter=group)
-        subfig_idx += 1
-
-        # Accuracy by Partial
-        cfig = subfigs[subfig_idx]
-        csubfigs = ensure_list(cfig.subfigures(1, self.num_groups))
-        for i, group in enumerate(self.unique_groups):
-            self._plot_accuracy_metrics(csubfigs[i], group_filter=group)
-        subfig_idx += 1
-
-        # Silhouette Value Boxplots
-        cfig = subfigs[subfig_idx]
-        csubfigs = ensure_list(cfig.subfigures(1, self.num_groups))
-        for i, group in enumerate(self.unique_groups):
-            self._plot_silhouette_value_boxplots(csubfigs[i], group_filter=group)
-        subfig_idx += 1
-
-        # Reconstruct Modality
-        cfig = subfigs[subfig_idx]
-        self._plot_reconstruct_modality(cfig)
-        subfig_idx += 1
+            func(csubfigs[i], group_filter=group)
 
     def _get_integrated_group(self, group_filter=None):
         num_algorithms = (
@@ -240,6 +222,12 @@ class generate_figure():
             use_raw_in_integrated,
         )
 
+    def _get_raw_data_shape(self):
+        scale = 1
+        rows = 1
+        cols = self.num_modalities
+        return scale, rows, cols
+
     def _plot_raw_data(self, cfig):
         num_modalities = self.num_modalities
         dataset = self.dataset
@@ -259,6 +247,12 @@ class generate_figure():
             ax.set_aspect('equal', adjustable='box')
         ax.legend()
         # fig.suptitle('Raw Data')
+
+    def _get_integrated_data_shape(self):
+        scale = 1
+        rows = math.ceil(max(self.group_counts) / self.integrated_rows)
+        cols = self.num_modalities * self.integrated_rows * self.num_groups
+        return scale, rows, cols
 
     def _plot_integrated_data(self, cfig, group_filter=None):
         dataset = self.dataset
@@ -316,6 +310,12 @@ class generate_figure():
             csubfig.suptitle(suptitle)
         # cfig.suptitle('Integrated Embeddings')
 
+    def _get_accuracy_metrics_shape(self):
+        scale = .75
+        rows = 1
+        cols = (2 - self.skip_partial) * self.num_groups
+        return scale, rows, cols
+
     def _plot_accuracy_metrics(self, cfig, group_filter=None):
         skip_partial = self.skip_partial
         dataset = self.dataset
@@ -368,6 +368,8 @@ class generate_figure():
         csubfig_idx += 1
 
     def _plot_distance_by_cell(self, cfig, group_filter=None):
+        cm_trained = self.cm_trained
+        num_algorithms = self.num_algorithms
         labels = self.labels
         _, integrated_data, integrated_alg_names, _, _ = (
             self._get_integrated_group(group_filter))
@@ -379,9 +381,22 @@ class generate_figure():
             idx = np.argsort(dat, axis=1)[0]
             dat = dat[idx, :][:, idx]
             lab = lab[idx]
-            ax = sns.heatmap(dat, xticklabels=lab, yticklabels=lab, linewidth=0, cmap='YlGnBu', ax=ax)
+            ax = sns.heatmap(
+                dat,
+                xticklabels=lab,
+                yticklabels=lab,
+                linewidth=0,
+                cmap='YlGnBu',
+                ax=ax
+            )
             ax.set_title(integrated_alg_names[i])
         cfig.suptitle('Distance of Medoid by Cell Type')
+
+    def _get_silhouette_value_boxplots_shape(self):
+        scale = 1
+        rows = 1
+        cols = self.num_modalities * self.num_groups
+        return scale, rows, cols
 
     def _plot_silhouette_value_boxplots(self, cfig, group_filter=None):
         num_modalities = self.num_modalities
@@ -418,6 +433,14 @@ class generate_figure():
             ax.legend([], [], frameon=False)
         # cfig.suptitle('Silhouette Score by Cell Type')
 
+    def _get_reconstruct_modality_shape(self):
+        scale = 1
+        rows = (
+            (self.num_modalities**2 - self.num_modalities) - len(self.exclude_predict)
+        ) * 2
+        cols = 4 + (not self.skip_nn) + (not self.skip_simple)
+        return scale, rows, cols
+
     def _plot_reconstruct_modality(self, cfig):
         """Plot a module to assess modal translation efficacy"""
         num_modalities = self.num_modalities
@@ -431,11 +454,8 @@ class generate_figure():
         dataset_names = self.dataset_names
         simple_num_features = self.simple_num_features
 
-        csubfigs = ensure_list(cfig.subfigures(
-            (num_modalities**2 - num_modalities) - len(exclude_predict),
-            1,
-            wspace=.07
-        ))
+        _, rows, cols = self._get_reconstruct_modality_shape()
+        csubfigs = ensure_list(cfig.subfigures(rows, 1, wspace=.07))
         fig_idx = 0
         for i in range(num_modalities):
             for j in range(num_modalities):
@@ -443,23 +463,40 @@ class generate_figure():
                     continue
                 csubfig = csubfigs[fig_idx]
                 axs = csubfig.subplots(1, 4 + (not skip_nn) + (not skip_simple))
+                # csubfig.suptitle(f'{dataset_names[i]} -> {dataset_names[j]}')
                 fig_idx += 1
 
-                # csubfig.suptitle(f'{dataset_names[i]} -> {dataset_names[j]}')
-
+                # Perform prediction
                 predicted = cm_trained.modal_predict(dataset[i], i)
                 actual = dataset[j]
+
+                # Get correlations per feature
+                corr_per_feature = []
+                for k in range(predicted.shape[1]):
+                    corr_per_feature.append(r_regression(predicted[:, [k]], actual[:, k])[0])
+                # Get best features
+                sorted_feature_idx = np.argsort(
+                    np.nan_to_num(corr_per_feature))[::-1]
+                feat = sorted_feature_idx[:self.num_best_reconstructed_features]
+                # Sort
+                corr_per_feature.sort()
+
+                # Get correlations per sample
+                corr_per_sample = []
+                for k in range(predicted.shape[0]):
+                    corr_per_sample.append(r_regression(
+                        np.transpose(predicted[[k], :]), np.transpose(actual[k, :]))[0])
+                # Sort
+                corr_per_sample.sort()
 
                 # Setup
                 if (i, j) in reconstruction_features:
                     feat = reconstruction_features[(i, j)]
-                else:
-                    feat = [0, 1]
 
                 axi = 0
                 # Real
                 for label in np.unique(np.concatenate(labels)):
-                    subdata = np.transpose(actual[:, feat][labels[j] == label])
+                    subdata = np.transpose(actual[:, feat[:2]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'Actual {dataset_names[j]}')
                 axs[axi].set_xlabel('Latent Feature 1')
@@ -468,9 +505,9 @@ class generate_figure():
 
                 # Predicted
                 for label in np.unique(np.concatenate(labels)):
-                    subdata = np.transpose(predicted[:, feat][labels[j] == label])
+                    subdata = np.transpose(predicted[:, feat[:2]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
-                axs[axi].set_title('JAMIE Translated')
+                axs[axi].set_title(f'JAMIE Translated {dataset_names[j]}')
                 axs[axi].set_xlabel('Latent Feature 1')
                 axs[axi].set_ylabel('Latent Feature 2')
                 axi += 1
@@ -480,31 +517,25 @@ class generate_figure():
                     nn_predicted = predict_nn(
                         torch.tensor(dataset[i]).float(), torch.tensor(dataset[j]).float())
                     for label in np.unique(np.concatenate(labels)):
-                        subdata = np.transpose(nn_predicted[:, feat][labels[j] == label])
+                        subdata = np.transpose(nn_predicted[:, feat[:2]][labels[j] == label])
                         axs[axi].scatter(*subdata, label=label, s=5.)
                     axs[axi].set_title('NN Predicted')
                     axs[axi].set_xlabel('Latent Feature 1')
                     axs[axi].set_ylabel('Latent Feature 2')
                     axi += 1
 
-                # Correlation
-                corr = []
-                for k in range(predicted.shape[1]):
-                    corr.append(r_regression(predicted[:, [k]], actual[:, k])[0])
-                axs[axi].bar(range(len(corr)), corr)
-                axs[axi].set_title('Correlation by Feature')
-                axs[axi].set_xlabel('Feature')
+                # Correlation per feature
+                axs[axi].plot(np.linspace(0, 1, len(corr_per_feature)), corr_per_feature)
+                axs[axi].set_title('Prediction Correlation by Feature')
+                axs[axi].set_xlabel('Percentile of Features')
                 axs[axi].set_ylabel('Correlation')
                 axi += 1
 
-                # Cherry-Picked Prediction
-                for label in np.unique(np.concatenate(labels)):
-                    true = np.transpose(actual[:, feat[0]][labels[j] == label])
-                    pred = np.transpose(predicted[:, feat[0]][labels[j] == label])
-                    axs[axi].scatter(true, pred, label=label, s=5.)
-                axs[axi].set_title('Predicted vs Truth')
-                axs[axi].set_xlabel('True Value')
-                axs[axi].set_ylabel('Predicted Value')
+                # Correlation per sample
+                axs[axi].plot(np.linspace(0, 1, len(corr_per_sample)), corr_per_sample)
+                axs[axi].set_title('Prediction Correlation by Sample')
+                axs[axi].set_xlabel('Percentile of Samples')
+                axs[axi].set_ylabel('Correlation')
                 axi += 1
 
                 # Simple model
@@ -522,6 +553,19 @@ class generate_figure():
                     axs[axi].set_xlabel('Feature')
                     axs[axi].set_ylabel('Linear Encoding Weight')
                     axi += 1
+
+                # Predicted vs True section
+                csubfig = csubfigs[fig_idx]
+                axs = csubfig.subplots(1, len(feat))
+                fig_idx += 1
+                for feature_idx, ax in zip(feat, axs):
+                    for label in np.unique(np.concatenate(labels)):
+                        true = np.transpose(actual[:, feature_idx][labels[j] == label])
+                        pred = np.transpose(predicted[:, feature_idx][labels[j] == label])
+                        ax.scatter(true, pred, label=label, s=5.)
+                    ax.set_title(f'Predicted vs True {dataset_names[j]}')
+                    ax.set_xlabel('True Value')
+                    ax.set_ylabel('Predicted Value')
         # cfig.suptitle('Modality Prediction')
 
         # plt.tight_layout()

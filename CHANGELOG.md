@@ -1,3 +1,15 @@
+# 3.5.3
+- Fix `scMNC` data loading
+- `generate_figure`
+  - Add `_get_..._shape()` functions
+  - Add `_group_plot()` function for automated group partitioning
+  - Add auto-selection of latent features for reconstruction visualization
+  - Extend shape implementation
+  - General reorganization
+  - Streamlined main function
+  - `height_ratio` fixes
+- Remove mapping timer printing
+
 # 3.5.2
 - Added group partitioning functionality to `generate_figure`
 - Refactored `generate_figure` to a class object

@@ -545,7 +545,7 @@ class ComManDo(uc.UnionCom):
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")
-        timer.aggregate()
+        # timer.aggregate()
         return integrated_data
 
     def modal_predict(self, data, modality):
