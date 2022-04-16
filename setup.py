@@ -29,6 +29,7 @@ setup(
             'flake8',
             'flake8-docstrings',
             'flake8-import-order',
+            'openpyxl',
             'pip-tools',
             'pytest',
             'pytest-cov',

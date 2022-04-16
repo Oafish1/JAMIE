@@ -1,3 +1,9 @@
+# 3.5.4
+- Add Davies-Bouldin Index
+- Experimental losses
+- Run on motor data
+- Use `PF_Ratio` in runs
+
 # 3.5.3
 - Fix `scMNC` data loading
 - `generate_figure`

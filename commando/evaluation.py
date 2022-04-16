@@ -7,7 +7,7 @@ import pandas as pd
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import r_regression
-from sklearn.metrics import silhouette_samples, silhouette_score
+from sklearn.metrics import davies_bouldin_score, silhouette_samples
 import torch
 
 from .commando import ComManDo
@@ -347,7 +347,7 @@ class generate_figure():
             'FOSCTTM': [],
         }
         for name in dataset_names:
-            acc_dict['Silhouette:\n' + name] = []
+            acc_dict['Davies-Bouldin:\n' + name] = []
         for i in range(num_algorithms):
             with contextlib.redirect_stdout(None):
                 acc_dict['Label Transfer Accuracy'].append(
@@ -355,8 +355,8 @@ class generate_figure():
                 acc_dict['FOSCTTM'].append(
                     cm_trained.test_closer(integrated_data[i]))
                 for j, name in enumerate(dataset_names):
-                    acc_dict['Silhouette:\n' + name].append(
-                        silhouette_score(integrated_data[i][j], types[j]))
+                    acc_dict['Davies-Bouldin:\n' + name].append(
+                        davies_bouldin_score(integrated_data[i][j], types[j]))
         df = pd.DataFrame(acc_dict).melt(
             id_vars=list(acc_dict.keys())[:1],
             value_vars=list(acc_dict.keys())[1:])

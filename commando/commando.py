@@ -51,9 +51,9 @@ class ComManDo(uc.UnionCom):
         self.loss_weights = loss_weights
         self.model_class = model_class
 
-        self.use_early_stop = False
-        self.min_increment = .1
-        self.max_steps_without_increment = 500
+        self.use_early_stop = use_early_stop
+        self.min_increment = min_increment
+        self.max_steps_without_increment = max_steps_without_increment
 
         self.debug = debug
 
@@ -439,6 +439,34 @@ class ComManDo(uc.UnionCom):
                 inv_cross_loss = weighted_F_inv_csim.sum() / F_inv.sum()
                 losses.append(inv_cross_loss)
                 timer.log('F-inv-cross loss')
+
+                # # Distance loss
+                # _, dist_diff0 = sim_dist_func(data[0], data[0])
+                # _, dist_diff1 = sim_dist_func(data[1], data[1])
+                # dist_loss0 = (cdiff0 - dist_diff0).square().sum() / prod(cdiff0.shape)
+                # dist_loss1 = (cdiff1 - dist_diff1).square().sum() / prod(cdiff1.shape)
+                # dist_loss = (dist_loss0 + dist_loss1) / 2
+                # losses.append(dist_loss)
+                # timer.log('Distance Loss')
+
+                # # Distance F loss
+                # _, dist_diff0 = sim_dist_func(data[0], data[0])
+                # _, dist_diff1 = sim_dist_func(data[1], data[1])
+                # dist_loss0 = (
+                #     torch.mm(torch.linalg.pinv(F), cdiff0) - torch.mm(torch.linalg.pinv(F), dist_diff0)
+                # ).square().sum() / prod(cdiff0.shape)
+                # dist_loss1 = (
+                #     torch.mm(cdiff1, torch.t(F)) - torch.mm(dist_diff1, torch.t(F))
+                # ).square().sum() / prod(cdiff1.shape)
+                # dist_loss = (dist_loss0 + dist_loss1) / 2
+                # losses.append(dist_loss)
+                # timer.log('Distance F Loss')
+
+                # # Com loss
+                # com_diff = cdiff0 - torch.mm(F, torch.mm(cdiff1, torch.t(F)))
+                # com_loss = (com_diff / (1+cdiff0)).square().sum()
+                # losses.append(com_loss)
+                # timer.log('Com Loss')
 
                 # # Repulsion loss (Promising, almost equiv to inv-cross)
                 # repulsion_loss = (
