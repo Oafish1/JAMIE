@@ -39,6 +39,7 @@ class ComManDo(uc.UnionCom):
         in_place=False,
         loss_weights=None,
         model_class=edModel,
+        pca_dim=0,
         use_early_stop=True,
         min_increment=.1,
         max_steps_without_increment=500,
@@ -50,6 +51,7 @@ class ComManDo(uc.UnionCom):
         self.in_place = in_place
         self.loss_weights = loss_weights
         self.model_class = model_class
+        self.pca_dim = pca_dim
 
         self.use_early_stop = use_early_stop
         self.min_increment = min_increment
@@ -318,7 +320,27 @@ class ComManDo(uc.UnionCom):
         # self.batch_size = 177
 
         timer = time_logger()
-        self.model = self.model_class(self.col, self.output_dim).to(self.device)
+        if self.pca_dim > 0:
+            # Why won't this work?
+            # pca_list = [PCA(n_components=self.pca_dim).fit(data) for data in self.dataset]
+            # pca_list = [(lambda x: pca.transform(x)) for pca in pca_list]
+            # print(pca_list[0](self.dataset[0]))
+
+            pca1 = PCA(n_components=self.pca_dim).fit(self.dataset[0])
+            pca2 = PCA(n_components=self.pca_dim).fit(self.dataset[1])
+            pca_list = [lambda x: pca1.transform(x), lambda x: pca2.transform(x)]
+
+            # Transform datasets (Maybe find less destructive way?)
+            self.dataset = [transform(x) for transform, x in zip(pca_list, self.dataset)]
+            self.col = [x.shape[1] for x in self.dataset]
+        else:
+            pca_list = None
+        self.model = (
+            self.model_class(
+                self.col,
+                self.output_dim,
+                preprocessing=pca_list,
+            ).to(self.device))
         optimizer = optim.RMSprop(self.model.parameters(), lr=self.lr)
 
         def sim_dist_func(a, b):
@@ -581,9 +603,10 @@ class ComManDo(uc.UnionCom):
         assert self.model is not None, 'Model must be trained before modal prediction.'
 
         to_modality = (modality + 1) % self.dataset_num
+        pre_function = self.model.preprocessing[modality]
         return self.model.decoders[to_modality](
             self.model.encoders[modality](
-                torch.tensor(data).float()
+                torch.tensor(pre_function(data)).float()
             )).detach().cpu().numpy()
 
     def compute_distances(self):

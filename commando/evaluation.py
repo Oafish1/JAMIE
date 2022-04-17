@@ -466,9 +466,9 @@ class generate_figure():
                 # csubfig.suptitle(f'{dataset_names[i]} -> {dataset_names[j]}')
                 fig_idx += 1
 
-                # Perform prediction
+                # Perform prediction (after preprocessing, if applicable)
                 predicted = cm_trained.modal_predict(dataset[i], i)
-                actual = dataset[j]
+                actual = cm_trained.model.preprocessing[j](dataset[j])
 
                 # Get correlations per feature
                 corr_per_feature = []

@@ -1,3 +1,7 @@
+# 3.6.0
+- Add pca before use on full model
+- Run on MMD-MA simulation data
+
 # 3.5.4
 - Add Davies-Bouldin Index
 - Experimental losses
