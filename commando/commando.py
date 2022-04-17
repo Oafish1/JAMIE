@@ -35,18 +35,20 @@ class ComManDo(uc.UnionCom):
     def __init__(
         self,
         P=None,
+        match_result=None,
         PF_Ratio=1,
         in_place=False,
         loss_weights=None,
         model_class=edModel,
-        pca_dim=0,
+        pca_dim=None,
         use_early_stop=True,
         min_increment=.1,
-        max_steps_without_increment=500,
+        max_steps_without_increment=200,
         debug=False,
         **kwargs
     ):
         self.P = P
+        self.match_result = match_result
         self.PF_Ratio = PF_Ratio
         self.in_place = in_place
         self.loss_weights = loss_weights
@@ -121,11 +123,11 @@ class ComManDo(uc.UnionCom):
         time.log('Distance')
 
         # Find correspondence between samples
-        match_result = self.match()
+        self.match_result = self.match() if self.match_result is None else self.match_result
         pairs_x = []
         pairs_y = []
         for i in range(self.dataset_num - 1):
-            cost = np.max(match_result[i]) - match_result[i]
+            cost = np.max(self.match_result[i]) - self.match_result[i]
             row_ind, col_ind = linear_sum_assignment(cost)
             pairs_x.append(row_ind)
             pairs_y.append(col_ind)
@@ -156,7 +158,7 @@ class ComManDo(uc.UnionCom):
                 elif i > j:
                     mat = match_matrix[j][i].T
                 else:
-                    mat = match_result[k]
+                    mat = self.match_result[k]
                     k += 1
                 match_matrix[i][j] = mat
             integrated_data = self.project_nlma(match_matrix)
@@ -165,6 +167,7 @@ class ComManDo(uc.UnionCom):
         print('-' * 33)
         print('ComManDo Done!')
         time.aggregate()
+        print()
 
         return integrated_data
 
@@ -320,14 +323,14 @@ class ComManDo(uc.UnionCom):
         # self.batch_size = 177
 
         timer = time_logger()
-        if self.pca_dim > 0:
+        if self.pca_dim is not None:
             # Why won't this work?
             # pca_list = [PCA(n_components=self.pca_dim).fit(data) for data in self.dataset]
             # pca_list = [(lambda x: pca.transform(x)) for pca in pca_list]
             # print(pca_list[0](self.dataset[0]))
 
-            pca1 = PCA(n_components=self.pca_dim).fit(self.dataset[0])
-            pca2 = PCA(n_components=self.pca_dim).fit(self.dataset[1])
+            pca1 = PCA(n_components=self.pca_dim[0]).fit(self.dataset[0])
+            pca2 = PCA(n_components=self.pca_dim[1]).fit(self.dataset[1])
             pca_list = [lambda x: pca1.transform(x), lambda x: pca2.transform(x)]
 
             # Transform datasets (Maybe find less destructive way?)
@@ -475,7 +478,8 @@ class ComManDo(uc.UnionCom):
                 # _, dist_diff0 = sim_dist_func(data[0], data[0])
                 # _, dist_diff1 = sim_dist_func(data[1], data[1])
                 # dist_loss0 = (
-                #     torch.mm(torch.linalg.pinv(F), cdiff0) - torch.mm(torch.linalg.pinv(F), dist_diff0)
+                #     torch.mm(torch.linalg.pinv(F), cdiff0)
+                #     - torch.mm(torch.linalg.pinv(F), dist_diff0)
                 # ).square().sum() / prod(cdiff0.shape)
                 # dist_loss1 = (
                 #     torch.mm(cdiff1, torch.t(F)) - torch.mm(dist_diff1, torch.t(F))

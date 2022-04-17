@@ -11,7 +11,7 @@
 
 
 # Other Papers
-### Poincaré Maps for Analyzing Complex Hierarchies in Single-Cell Data 
+### Poincaré Maps for Analyzing Complex Hierarchies in Single-Cell Data
 [Paper](https://www.nature.com/articles/s41467-020-16822-4)
 
 
@@ -26,3 +26,8 @@
 
 ### scMNC
 [Source](https://github.com/daifengwanglab/scMNC/)
+
+### Patch-Seq
+[Paper](https://www.nature.com/articles/s41586-021-03813-8#data-availability)
+
+[Source](https://github.com/AllenInstitute/patchseq_human_L23)

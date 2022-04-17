@@ -10,13 +10,12 @@ class edModel(nn.Module):
     def __init__(self, input_dim, output_dim, preprocessing=None):
         super().__init__()
 
+        self.num_modalities = len(input_dim)
         # For outputting the model with preprocessing included
         if preprocessing is None:
-            self.preprocessing = lambda x: x
+            self.preprocessing = self.num_modalities * [lambda x: x]
         else:
             self.preprocessing = preprocessing
-
-        self.num_modalities = len(input_dim)
         self.encoders = []
         for i in range(self.num_modalities):
             self.encoders.append(nn.Sequential(

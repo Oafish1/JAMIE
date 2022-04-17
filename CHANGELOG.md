@@ -1,3 +1,9 @@
+# 3.6.1
+- Added plug-in pre-calculated `F` matrix through `match_result`
+- Allow for per-dataset `pca_dim`
+- Fixed `preprocessing` variable default in `model`
+- Test patch-seq dataset
+
 # 3.6.0
 - Add pca before use on full model
 - Run on MMD-MA simulation data
