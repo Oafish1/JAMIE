@@ -1,3 +1,6 @@
+# 3.7.1
+- Rerun `scGEM` data
+
 # 3.7.0
 - Add experimental `corr_method`
 - Added `dist_method` choice for `sim_dist_func` which takes `cosine`, `euclidean`
