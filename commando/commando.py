@@ -37,6 +37,8 @@ class ComManDo(uc.UnionCom):
         P=None,
         match_result=None,
         PF_Ratio=1,
+        corr_method='unioncom',
+        dist_method='cosine',
         in_place=False,
         loss_weights=None,
         model_class=edModel,
@@ -50,6 +52,8 @@ class ComManDo(uc.UnionCom):
         self.P = P
         self.match_result = match_result
         self.PF_Ratio = PF_Ratio
+        self.corr_method = corr_method
+        self.dist_method = dist_method
         self.in_place = in_place
         self.loss_weights = loss_weights
         self.model_class = model_class
@@ -65,7 +69,7 @@ class ComManDo(uc.UnionCom):
         # if 'distance_mode' not in kwargs:
         #     kwargs['distance_mode'] = 'spearman'
         if 'project_mode' not in kwargs:
-            kwargs['project_mode'] = 'nlma'
+            kwargs['project_mode'] = 'commando'
         if 'log_pd' not in kwargs:
             kwargs['log_pd'] = 500
 
@@ -89,7 +93,7 @@ class ComManDo(uc.UnionCom):
             raise Exception('integration_type error! Enter MultiOmics.')
         if self.distance_mode not in distance_modes:
             raise Exception('distance_mode error! Enter a correct distance_mode.')
-        if self.project_mode not in ('nlma', 'tsne'):
+        if self.project_mode not in ('commando', 'tsne'):
             raise Exception("Choose correct project_mode: 'nlma', 'tsne'.")
         if self.integration_type != 'MultiOmics':
             raise Exception(
@@ -145,7 +149,7 @@ class ComManDo(uc.UnionCom):
                     self.col[i] = 50
 
             integrated_data = self.project_tsne(self.dataset, pairs_x, pairs_y, P_joint)
-        elif self.project_mode == 'nlma':
+        elif self.project_mode == 'commando':
             match_matrix = [
                 [None for j in range(self.dataset_num)]
                 for i in range(self.dataset_num)
@@ -161,7 +165,7 @@ class ComManDo(uc.UnionCom):
                     mat = self.match_result[k]
                     k += 1
                 match_matrix[i][j] = mat
-            integrated_data = self.project_nlma(match_matrix)
+            integrated_data = self.project_commando(match_matrix)
         time.log('Mapping')
 
         print('-' * 33)
@@ -182,15 +186,80 @@ class ComManDo(uc.UnionCom):
 
                 print('-' * 33)
                 print(f'Find correspondence between Dataset {i + 1} and Dataset {j + 1}')
-                F = self.Prime_Dual(
-                    [self.dist[i], self.dist[j]],
-                    dx=self.col[i],
-                    dy=self.col[j],
-                )
+                if self.corr_method == 'unioncom':
+                    F = self.Prime_Dual(
+                        [self.dist[i], self.dist[j]],
+                        dx=self.col[i],
+                        dy=self.col[j],
+                    )
+                elif self.corr_method == 'commando':
+                    F = self.com_corr([self.dist[i], self.dist[j]])
                 cor_pairs.append(F)
 
         print("Finished Matching!")
         return cor_pairs
+
+    def com_corr(self, dist):
+        """Estimate correspondence"""
+        Kx, Ky = dist
+        n, m = np.shape(Kx)[0], np.shape(Ky)[0]
+        Kx = torch.Tensor(Kx)
+        Ky = torch.Tensor(Ky)
+
+        # Params
+        dim = 20
+        keep_prob = .35
+        epochs = 10001
+        epoch_p = 2000
+
+        # Initialize
+        a = torch.rand(1, requires_grad=True)
+        F = torch.rand(dim, dim, requires_grad=True)
+        Tx = torch.rand(dim, n, requires_grad=True)
+        Ty = torch.rand(dim, m, requires_grad=True)
+
+        # Step
+        print('Clustering')
+        optimizer = optim.RMSprop([Tx, Ty], lr=.01)
+        for i in range(epochs):
+            # loss = (a*Kx - torch.mm(F, torch.mm(Ky, F.T))).square().sum()
+            maskx = torch.diag(1.*(torch.rand(n) > (1-keep_prob)))
+            masky = torch.diag(1.*(torch.rand(m) > (1-keep_prob)))
+            tx = torch.mm(Tx, maskx)
+            ty = torch.mm(Ty, masky)
+            loss = (
+                torch.mm(tx, torch.mm(Kx, tx.T))
+                - torch.mm(ty, torch.mm(Ky, ty.T))
+            ).square().sum()
+
+            if (i % epoch_p) == 0:
+                print(f'loss: {float(loss.cpu().detach())}')
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+        print('Casting')
+        Tx = Tx.detach()
+        Ty = Ty.detach()
+        optimizer = optim.RMSprop([a, F], lr=.1)
+        for i in range(epochs):
+            Fc = torch.mm(Tx.T, torch.mm(F, Ty))
+            loss = (a*Kx - torch.mm(Fc, torch.mm(Ky, Fc.T))).square().sum()
+
+            if (i % epoch_p) == 0:
+                print(f'loss: {float(loss.cpu().detach())}')
+
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+
+        corr = torch.mm(Tx.T, torch.mm(F, Ty)).cpu().detach()
+        k = 5
+        corr_idx = torch.argsort(corr, dim=1, descending=True)[:, :k]
+        corr = torch.zeros(n, m).cpu()
+        corr[corr_idx] = 1
+        return corr.numpy()
 
     def Prime_Dual(
         self,
@@ -294,10 +363,10 @@ class ComManDo(uc.UnionCom):
 
         return F.cpu().detach().numpy()
 
-    def project_nlma(self, W):
-        """Perform NLMA using TSNE-like backend"""
+    def project_commando(self, W):
+        """Perform alignment using TSNE-like backend"""
         print('-' * 33)
-        print('Performing NLMA')
+        print('Train coupled autoencoders')
         assert len(W) == 2, 'Currently only compatible with 2 modalities.'
 
         # Default vars
@@ -346,24 +415,27 @@ class ComManDo(uc.UnionCom):
             ).to(self.device))
         optimizer = optim.RMSprop(self.model.parameters(), lr=self.lr)
 
-        def sim_dist_func(a, b):
-            # Cosine Similarity
-            sim = (
-                torch.mm(a, torch.t(b))
-                / (a.norm(dim=1).reshape(-1, 1) * b.norm(dim=1).reshape(1, -1))
-            )
-            # return sim, 1-sim
-            diff = 1 - sim
-            sim[sim < 0] = 0
-            diff[diff < 0] = 0
-            return sim, diff
+        def sim_diff_func(a, b):
+            if self.dist_method == 'cosine':
+                # Cosine Similarity
+                sim = (
+                    torch.mm(a, torch.t(b))
+                    / (a.norm(dim=1).reshape(-1, 1) * b.norm(dim=1).reshape(1, -1))
+                )
+                # return sim, 1-sim
+                diff = 1 - sim
+                sim[sim < 0] = 0
+                diff[diff < 0] = 0
+                return sim, diff
 
-            # # Euclidean Distance
-            # dist = torch.cdist(a, b, p=2)
-            # dist = dist / dist.max()
-            # sim = 1 / (1+dist)
-            # sim = sim / sim.max()
-            # return sim, dist
+            elif self.dist_method == 'euclidean':
+                # Euclidean Distance
+                dist = torch.cdist(a, b, p=2)
+                dist = dist / dist.max()
+                sim = 1 / (1+dist)
+                sim = 2 * sim - 1  # This one scaling line makes the entire algorithm work
+                sim = sim / sim.max()
+                return sim, dist
 
         self.model.train()
 
@@ -412,13 +484,6 @@ class ComManDo(uc.UnionCom):
                 if F_inv.absolute().max() != 0:
                     F_inv /= F_inv.absolute().max()
 
-                # KEY PART FOR ACC
-                # Use KNN, needs to be adapted to diff num samples
-                # F = knn_dist(F) if self.perfect_alignment else knn_sim(F)
-                # F = torch.from_numpy(F).float().to(self.device)
-                # F_inv = knn_dist(F_inv) if self.perfect_alignment else knn_sim(F_inv)
-                # F_inv = torch.from_numpy(F_inv).float().to(self.device)
-
                 timer.log('Get subset samples')
 
                 # Aggregate correspondence
@@ -441,27 +506,27 @@ class ComManDo(uc.UnionCom):
                 timer.log('Reconstruction loss')
 
                 # Difference
-                csim, cdiff = sim_dist_func(embedded[0], embedded[1])
-                csim0, cdiff0 = sim_dist_func(embedded[0], embedded[0])
-                csim1, cdiff1 = sim_dist_func(embedded[1], embedded[1])
+                csim, cdiff = sim_diff_func(embedded[0], embedded[1])
+                csim0, cdiff0 = sim_diff_func(embedded[0], embedded[0])
+                csim1, cdiff1 = sim_diff_func(embedded[1], embedded[1])
                 timer.log('Difference calculation')
 
                 # Alignment loss
                 if P.absolute().sum() != 0:
                     weighted_P_cdiff = cdiff * P
-                    alignment_loss = weighted_P_cdiff.sum() / P.absolute().sum()
+                    alignment_loss = weighted_P_cdiff.absolute().sum() / P.absolute().sum()
                     losses.append(alignment_loss)
                     timer.log('Aligned loss')
 
                 # Cross loss using F
                 weighted_F_cdiff = cdiff * F
-                cross_loss = weighted_F_cdiff.sum() / F.sum()
+                cross_loss = weighted_F_cdiff.absolute().sum() / F.absolute().sum()
                 losses.append(cross_loss)
                 timer.log('F-cross loss')
 
                 # Inverse cross loss using F
                 weighted_F_inv_csim = csim * F_inv
-                inv_cross_loss = weighted_F_inv_csim.sum() / F_inv.sum()
+                inv_cross_loss = weighted_F_inv_csim.absolute().sum() / F_inv.absolute().sum()
                 losses.append(inv_cross_loss)
                 timer.log('F-inv-cross loss')
 

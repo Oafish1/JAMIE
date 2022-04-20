@@ -1,3 +1,11 @@
+# 3.7.0
+- Add experimental `corr_method`
+- Added `dist_method` choice for `sim_dist_func` which takes `cosine`, `euclidean`
+- Generalize `F` representation to allow for negatives
+ - Fixes problem with negative `sim`, `diff`, `F`, or `P`
+- Reruns
+- Use euclidean distance for `sim_dist_func`
+
 # 3.6.1
 - Added plug-in pre-calculated `F` matrix through `match_result`
 - Allow for per-dataset `pca_dim`
