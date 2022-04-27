@@ -1,3 +1,10 @@
+# 3.7.2
+- Add custom colors to `generate_figure`
+- Add metric heatmap to `generate_figure`
+- Fixes to dimensions and generalization in `generate_figure`
+- Formatting changes to default `generate_figure`
+- Reruns on all `general_analysis` notebooks
+
 # 3.7.1
 - Rerun `scGEM` data
 

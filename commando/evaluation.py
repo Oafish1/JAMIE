@@ -70,11 +70,14 @@ class generate_figure():
         scale=20,
         size_bound=[.25, .5],
         vertical_scale=.75,
+        colors=plt.rcParams['axes.prop_cycle'].by_key()['color'],
+        heat_cmap=[sns.cm.mako, sns.cm.mako_r],
+        heatmap_soften_factor=1,
         # Visualizations
         reconstruction_features={},
         integrated_use_pca=False,
         raw_data_group=0,
-        integrated_rows=3,
+        integrated_rows=1,
         # Simulations
         simple_num_features=32,
         num_best_reconstructed_features=3,
@@ -115,6 +118,8 @@ class generate_figure():
         self.scale = scale
         self.size_bound = size_bound
         self.vertical_scale = vertical_scale
+        self.heat_cmap = heat_cmap
+        self.heatmap_soften_factor = heatmap_soften_factor
         # Visualizations
         self.reconstruction_features = reconstruction_features
         self.integrated_use_pca = integrated_use_pca
@@ -147,19 +152,18 @@ class generate_figure():
             for i in range(self.num_modalities)
         ]
 
-        default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        self.colors = np.array(default_colors[:self.num_algorithms])
+        self.colors = np.array(colors[:self.num_algorithms])
 
         # What to plot
         to_run = (
             lambda x: self._group_plot(x, self._plot_integrated_data),
-            lambda x: self._group_plot(x, self._plot_accuracy_metrics),
-            lambda x: self._group_plot(x, self._plot_silhouette_value_boxplots),
+            self._plot_accuracy_metrics_heatmap,
+            self._plot_silhouette_value_boxplots,
             self._plot_reconstruct_modality,
         )
         to_run_size = (
-            self._get_integrated_data_shape(),
-            self._get_accuracy_metrics_shape(),
+            self._group_shape(self._get_integrated_data_shape()),
+            self._get_accuracy_metrics_heatmap_shape(),
             self._get_silhouette_value_boxplots_shape(),
             self._get_reconstruct_modality_shape(),
         )
@@ -185,6 +189,11 @@ class generate_figure():
         assert len(subfigs) == len(to_run), '``to_run`` and ``to_run_size`` must match in shape'
         for cfig, to_run_func in zip(subfigs, to_run):
             to_run_func(cfig)
+
+    def _group_shape(self, shape):
+        shape_array = [x for x in shape]
+        shape_array[-1] *= self.num_groups
+        return shape_array
 
     def _group_plot(self, cfig, func):
         csubfigs = ensure_list(cfig.subfigures(1, self.num_groups))
@@ -251,7 +260,7 @@ class generate_figure():
     def _get_integrated_data_shape(self):
         scale = 1
         rows = math.ceil(max(self.group_counts) / self.integrated_rows)
-        cols = self.num_modalities * self.integrated_rows * self.num_groups
+        cols = self.num_modalities * self.integrated_rows
         return scale, rows, cols
 
     def _plot_integrated_data(self, cfig, group_filter=None):
@@ -313,7 +322,7 @@ class generate_figure():
     def _get_accuracy_metrics_shape(self):
         scale = .75
         rows = 1
-        cols = (2 - self.skip_partial) * self.num_groups
+        cols = (2 - self.skip_partial)
         return scale, rows, cols
 
     def _plot_accuracy_metrics(self, cfig, group_filter=None):
@@ -367,6 +376,67 @@ class generate_figure():
         # cfig.suptitle('Miscellaneous Accuracy Statistics')
         csubfig_idx += 1
 
+    def _get_accuracy_metrics_heatmap_shape(self):
+        scale = .75
+        rows = 1
+        cols = 1
+        return scale, rows, cols
+
+    def _plot_accuracy_metrics_heatmap(self, cfig, group_filter=None):
+        types = self.types
+        dataset_names = self.dataset_names
+        cm_trained = self.cm_trained
+        num_algorithms, integrated_data, integrated_alg_names, colors, _ = (
+            self._get_integrated_group(group_filter))
+
+        # Metric by Algorithm
+        reverse_color = [False, True] + [True] * self.num_modalities  # True iff lower is better
+        acc_dict = {
+            'Algorithm': integrated_alg_names,
+            'Label Transfer Accuracy': [],
+            'FOSCTTM': [],
+        }
+        for name in dataset_names:
+            acc_dict['Davies-Bouldin:\n' + name] = []
+        for i in range(num_algorithms):
+            with contextlib.redirect_stdout(None):
+                acc_dict['Label Transfer Accuracy'].append(
+                    cm_trained.test_LabelTA(integrated_data[i], types))
+                acc_dict['FOSCTTM'].append(
+                    cm_trained.test_closer(integrated_data[i]))
+                for j, name in enumerate(dataset_names):
+                    acc_dict['Davies-Bouldin:\n' + name].append(
+                        davies_bouldin_score(integrated_data[i][j], types[j]))
+        df = pd.DataFrame(acc_dict)
+        df = df.set_index('Algorithm')
+        axs = cfig.subplots(1, len(df), gridspec_kw={'wspace': 0})
+        for i, (ax, col) in enumerate(zip(axs, df.columns)):
+            # Avoid harsh black
+            sf = self.heatmap_soften_factor
+            if not reverse_color[i]:
+                vmin = df[col].values.min() - sf * (df[col].values.max() - df[col].values.min())
+                vmax = df[col].values.max()
+            else:
+                vmin = df[col].values.min()
+                vmax = df[col].values.max() + sf * (df[col].values.max() - df[col].values.min())
+            # Plot heatmap
+            sns.heatmap(
+                np.array([df[col].values]).T,
+                xticklabels=[col],
+                yticklabels=df.index,
+                ax=ax,
+                annot=True,
+                fmt='.2f',
+                cbar=False,
+                vmin=vmin,
+                vmax=vmax,
+                cmap=self.heat_cmap[0] if not reverse_color[i] else self.heat_cmap[1])
+            if i > 0:
+                ax.yaxis.set_ticks([])
+        ax.set_xlabel(None)
+        ax.set_ylabel(None)
+        ax.set_title('Metric by Algorithm')
+
     def _plot_distance_by_cell(self, cfig, group_filter=None):
         cm_trained = self.cm_trained
         num_algorithms = self.num_algorithms
@@ -393,9 +463,9 @@ class generate_figure():
         cfig.suptitle('Distance of Medoid by Cell Type')
 
     def _get_silhouette_value_boxplots_shape(self):
-        scale = 1
+        scale = .5
         rows = 1
-        cols = self.num_modalities * self.num_groups
+        cols = self.num_modalities
         return scale, rows, cols
 
     def _plot_silhouette_value_boxplots(self, cfig, group_filter=None):
@@ -430,7 +500,10 @@ class generate_figure():
                 palette=colors,
             )
             ax.set_title(dataset_names[i])
-            ax.legend([], [], frameon=False)
+            if i == 0:
+                ax.legend()
+            else:
+                ax.legend([], [], frameon=False)
         # cfig.suptitle('Silhouette Score by Cell Type')
 
     def _get_reconstruct_modality_shape(self):
