@@ -1,3 +1,10 @@
+# 3.7.3
+- Add more comparison methods to notebooks
+- Change `generate_figure` default layout
+- Change optimizer for main `JAMIE` model
+- Change plotting style for `generate_figure` stats
+- Reruns
+
 # 3.7.2
 - Add custom colors to `generate_figure`
 - Add metric heatmap to `generate_figure`

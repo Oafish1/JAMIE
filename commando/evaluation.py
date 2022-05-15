@@ -157,13 +157,13 @@ class generate_figure():
         # What to plot
         to_run = (
             lambda x: self._group_plot(x, self._plot_integrated_data),
-            self._plot_accuracy_metrics_heatmap,
+            self._plot_accuracy_metrics,
             self._plot_silhouette_value_boxplots,
             self._plot_reconstruct_modality,
         )
         to_run_size = (
             self._group_shape(self._get_integrated_data_shape()),
-            self._get_accuracy_metrics_heatmap_shape(),
+            self._get_accuracy_metrics_shape(),
             self._get_silhouette_value_boxplots_shape(),
             self._get_reconstruct_modality_shape(),
         )
@@ -301,7 +301,10 @@ class generate_figure():
                 # projection='3d'
                 plot_data = integrated_data[j-use_raw_in_integrated][i]
                 if integrated_use_pca:
-                    plot_data = PCA(n_components=2).fit_transform(plot_data)
+                    if i == 0:
+                        pca = PCA(n_components=2)
+                        pca.fit(plot_data)
+                    plot_data = pca.transform(plot_data)
                 for label in np.unique(np.concatenate(labels)):
                     data_subset = np.transpose(plot_data[labels[i] == label])[:2, :]
                     ax.scatter(*data_subset, s=5., label=label)
@@ -335,7 +338,7 @@ class generate_figure():
             self._get_integrated_group(group_filter))
 
         csubfigs = ensure_list(
-            cfig.subfigures(1, 2 if not skip_partial else 1, wspace=.07))
+            cfig.subfigures(1, 3 if not skip_partial else 2, wspace=.07))
         csubfig_idx = 0
         if not skip_partial:
             ax = csubfigs[csubfig_idx].subplots(1, 1)
@@ -349,7 +352,6 @@ class generate_figure():
             csubfig_idx += 1
 
         # Metric by Algorithm
-        ax = csubfigs[csubfig_idx].subplots(1, 1)
         acc_dict = {
             'Algorithm': integrated_alg_names,
             'Label Transfer Accuracy': [],
@@ -366,15 +368,29 @@ class generate_figure():
                 for j, name in enumerate(dataset_names):
                     acc_dict['Davies-Bouldin:\n' + name].append(
                         davies_bouldin_score(integrated_data[i][j], types[j]))
-        df = pd.DataFrame(acc_dict).melt(
-            id_vars=list(acc_dict.keys())[:1],
-            value_vars=list(acc_dict.keys())[1:])
-        sns.barplot(data=df, x='variable', y='value', hue='Algorithm', ax=ax, palette=colors)
-        ax.set_xlabel(None)
-        ax.set_ylabel(None)
-        ax.set_title('Metric by Algorithm')
+        keys_01 = ['Algorithm', 'Label Transfer Accuracy', 'FOSCTTM']
+        keys_0i = ['Algorithm'] + ['Davies-Bouldin:\n' + name for name in dataset_names]
+        df_01, df_0i = (pd.DataFrame({k: v for k, v in acc_dict.items() if k in keys}).melt(
+            id_vars=list(keys)[:1],
+            value_vars=list(keys)[1:])
+            for keys in (keys_01, keys_0i))
+        dfs = [df_01, df_0i]
+        for i, df in enumerate(dfs):
+            ax = csubfigs[csubfig_idx].subplots(1, 1)
+            pl = sns.barplot(
+                data=df,
+                x='variable',
+                y='value',
+                hue='Algorithm',
+                ax=ax,
+                palette=colors)
+            ax.set_xlabel(None)
+            ax.set_ylabel(None)
+            ax.set_title('Metrics by Algorithm')
+            if i!=0:
+                pl.legend_.remove()
+            csubfig_idx += 1
         # cfig.suptitle('Miscellaneous Accuracy Statistics')
-        csubfig_idx += 1
 
     def _get_accuracy_metrics_heatmap_shape(self):
         scale = .75

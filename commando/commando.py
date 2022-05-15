@@ -413,7 +413,7 @@ class ComManDo(uc.UnionCom):
                 self.output_dim,
                 preprocessing=pca_list,
             ).to(self.device))
-        optimizer = optim.RMSprop(self.model.parameters(), lr=self.lr)
+        optimizer = optim.AdamW(self.model.parameters(), lr=self.lr)
 
         def sim_diff_func(a, b):
             if self.dist_method == 'cosine':
