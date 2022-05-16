@@ -68,6 +68,7 @@ class generate_figure():
         dataset_names=None,
         # Style
         scale=20,
+        legend_ncol=2,
         size_bound=[.25, .5],
         vertical_scale=.75,
         colors=plt.rcParams['axes.prop_cycle'].by_key()['color'],
@@ -80,29 +81,33 @@ class generate_figure():
         integrated_rows=1,
         # Simulations
         simple_num_features=32,
-        num_best_reconstructed_features=3,
+        num_best_reconstructed_features=4,
         # Remove Visualizations
         exclude_predict=[],
         skip_partial=True,
         skip_nn=True,
         skip_simple=True,
-        use_raw_in_integrated=True,
+        use_raw_in_integrated=False,
     ):
         # asddf: Legends may be wrong unless sorted
         assert len(integrated_data) == len(integrated_alg_names), (
             '``alg_*`` params must correspond.')
 
         # Style
-        plt.rcParams.update({
-            'figure.titlesize': 20,
-            'axes.titlesize': 'x-large',
-            'xtick.labelsize': 20,
-            'ytick.labelsize': 40,
-            'font.size': 40,
-            'font.weight': 'bold',
-            'font.family': 'normal',
-        })
         sns.set(style='darkgrid')
+        plt.rcParams.update({
+            'figure.titlesize': 10,
+            'axes.titlesize': 20,
+            'axes.labelsize': 15,
+            'xtick.labelsize': 12.5,
+            'ytick.labelsize': 12.5,
+            'legend.fontsize': 12.5,
+            'font.size': 10,
+
+            # 'axes.titlesize': 'x-large',
+            'font.weight': 'bold',
+            # 'font.family': 'normal',
+        })
 
         # Save vars
         # Data
@@ -116,6 +121,7 @@ class generate_figure():
         self.dataset_names = dataset_names
         # Style
         self.scale = scale
+        self.legend_ncol = legend_ncol
         self.size_bound = size_bound
         self.vertical_scale = vertical_scale
         self.heat_cmap = heat_cmap
@@ -156,12 +162,14 @@ class generate_figure():
 
         # What to plot
         to_run = (
+            lambda x: self._plot_raw_data(x, ps_scale=.5),
             lambda x: self._group_plot(x, self._plot_integrated_data),
             self._plot_accuracy_metrics,
             self._plot_silhouette_value_boxplots,
             self._plot_reconstruct_modality,
         )
         to_run_size = (
+            self._get_raw_data_shape(),
             self._group_shape(self._get_integrated_data_shape()),
             self._get_accuracy_metrics_shape(),
             self._get_silhouette_value_boxplots_shape(),
@@ -232,29 +240,31 @@ class generate_figure():
         )
 
     def _get_raw_data_shape(self):
-        scale = 1
+        scale = .5
         rows = 1
         cols = self.num_modalities
         return scale, rows, cols
 
-    def _plot_raw_data(self, cfig):
+    def _plot_raw_data(self, cfig, ps_scale=1):
         num_modalities = self.num_modalities
         dataset = self.dataset
         labels = self.labels
         dataset_names = self.dataset_names
 
+        full_scale = int(1 / ps_scale) * num_modalities
+
         for i in range(num_modalities):
-            ax = cfig.add_subplot(1, num_modalities, i+1)
+            ax = cfig.add_subplot(1, full_scale, i+1)
             pca_data = PCA(n_components=2).fit_transform(dataset[i])
             for label in np.unique(np.concatenate(labels)):
                 pca_data_subset = np.transpose(pca_data[labels[i] == label])
                 ax.scatter(*pca_data_subset, s=5., label=label)
             title = dataset_names[i]
             ax.set_title(title)
-            ax.set_xlabel('PCA-1')
-            ax.set_ylabel('PCA-2')
-            ax.set_aspect('equal', adjustable='box')
-        ax.legend()
+            ax.set_xlabel('PC-1')
+            ax.set_ylabel('PC-2')
+            # ax.set_aspect('equal', adjustable='box')
+        ax.legend(ncol=self.legend_ncol)
         # fig.suptitle('Raw Data')
 
     def _get_integrated_data_shape(self):
@@ -293,7 +303,7 @@ class generate_figure():
                     ax.set_ylabel(type_text + '-2')
                     # ax.set_aspect('equal', adjustable='box')
                     if i == 0:
-                        ax.legend()
+                        ax.legend(ncol=self.legend_ncol)
                     suptitle = 'Raw Data'
                     continue
 
@@ -308,8 +318,9 @@ class generate_figure():
                 for label in np.unique(np.concatenate(labels)):
                     data_subset = np.transpose(plot_data[labels[i] == label])[:2, :]
                     ax.scatter(*data_subset, s=5., label=label)
+                suptitle = integrated_alg_names[j-use_raw_in_integrated]
                 title = dataset_names[i]
-                ax.set_title(title)
+                ax.set_title(suptitle + ' - ' + title)
                 if integrated_use_pca:
                     type_text = 'PC'
                 else:
@@ -318,12 +329,9 @@ class generate_figure():
                 ax.set_ylabel(type_text + '-2')
                 # ax.set_aspect('equal', adjustable='box')
                 # ax.set_zlabel('Latent Feature 3')
-                suptitle = integrated_alg_names[j-use_raw_in_integrated]
-            csubfig.suptitle(suptitle)
-        # cfig.suptitle('Integrated Embeddings')
 
     def _get_accuracy_metrics_shape(self):
-        scale = .75
+        scale = .5
         rows = 1
         cols = (2 - self.skip_partial)
         return scale, rows, cols
@@ -386,9 +394,15 @@ class generate_figure():
                 palette=colors)
             ax.set_xlabel(None)
             ax.set_ylabel(None)
-            ax.set_title('Metrics by Algorithm')
-            if i!=0:
+            if i == 0:
+                prefix = 'Bounded'
+            else:
+                prefix = 'Unbounded'
+            ax.set_title(prefix + ' ' + 'Metrics by Algorithm')
+            if i != 0:
                 pl.legend_.remove()
+            else:
+                plt.legend(ncol=self.legend_ncol)
             csubfig_idx += 1
         # cfig.suptitle('Miscellaneous Accuracy Statistics')
 
@@ -484,7 +498,7 @@ class generate_figure():
         cols = self.num_modalities
         return scale, rows, cols
 
-    def _plot_silhouette_value_boxplots(self, cfig, group_filter=None):
+    def _plot_silhouette_value_boxplots(self, cfig, group_filter=None, legend=False):
         num_modalities = self.num_modalities
         types = self.types
         labels = self.labels
@@ -515,8 +529,8 @@ class generate_figure():
                 ax=ax,
                 palette=colors,
             )
-            ax.set_title(dataset_names[i])
-            if i == 0:
+            ax.set_title(dataset_names[i] + ' Silhouette Score')
+            if i == 0 and legend:
                 ax.legend()
             else:
                 ax.legend([], [], frameon=False)
@@ -587,7 +601,7 @@ class generate_figure():
                 for label in np.unique(np.concatenate(labels)):
                     subdata = np.transpose(actual[:, feat[:2]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
-                axs[axi].set_title(f'Actual {dataset_names[j]}')
+                axs[axi].set_title(f'True {dataset_names[j]}')
                 axs[axi].set_xlabel('Latent Feature 1')
                 axs[axi].set_ylabel('Latent Feature 2')
                 axi += 1
@@ -596,7 +610,7 @@ class generate_figure():
                 for label in np.unique(np.concatenate(labels)):
                     subdata = np.transpose(predicted[:, feat[:2]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
-                axs[axi].set_title(f'JAMIE Translated {dataset_names[j]}')
+                axs[axi].set_title(f'Imputed {dataset_names[j]}')
                 axs[axi].set_xlabel('Latent Feature 1')
                 axs[axi].set_ylabel('Latent Feature 2')
                 axi += 1
@@ -614,15 +628,19 @@ class generate_figure():
                     axi += 1
 
                 # Correlation per feature
-                axs[axi].plot(np.linspace(0, 1, len(corr_per_feature)), corr_per_feature)
-                axs[axi].set_title('Prediction Correlation by Feature')
+                xaxis = np.linspace(0, 1, len(corr_per_feature))
+                axs[axi].plot(xaxis, corr_per_feature)
+                axs[axi].fill_between(xaxis, 0, corr_per_feature, alpha=.25)
+                axs[axi].set_title('Correlation by Feature')
                 axs[axi].set_xlabel('Percentile of Features')
                 axs[axi].set_ylabel('Correlation')
                 axi += 1
 
                 # Correlation per sample
-                axs[axi].plot(np.linspace(0, 1, len(corr_per_sample)), corr_per_sample)
-                axs[axi].set_title('Prediction Correlation by Sample')
+                xaxis = np.linspace(0, 1, len(corr_per_sample))
+                axs[axi].plot(xaxis, corr_per_sample)
+                axs[axi].fill_between(xaxis, 0, corr_per_sample, alpha=.25)
+                axs[axi].set_title('Correlation by Sample')
                 axs[axi].set_xlabel('Percentile of Samples')
                 axs[axi].set_ylabel('Correlation')
                 axi += 1
@@ -652,7 +670,13 @@ class generate_figure():
                         true = np.transpose(actual[:, feature_idx][labels[j] == label])
                         pred = np.transpose(predicted[:, feature_idx][labels[j] == label])
                         ax.scatter(true, pred, label=label, s=5.)
-                    ax.set_title(f'Predicted vs True {dataset_names[j]}')
+                    # Plot y=x
+                    lims = [
+                        max(ax.get_xlim()[0], ax.get_ylim()[0]),
+                        min(ax.get_xlim()[1], ax.get_ylim()[1])]
+                    ax.plot(lims, lims, 'k-', alpha=0.75)
+
+                    ax.set_title(f'{dataset_names[j]} Calibration Plot')
                     ax.set_xlabel('True Value')
                     ax.set_ylabel('Predicted Value')
         # cfig.suptitle('Modality Prediction')

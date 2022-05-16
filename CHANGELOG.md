@@ -1,3 +1,9 @@
+# 3.7.4
+- `generate_figure` add multi-column colors
+- `generate_figure` formatting, title, layout changes
+- Reruns
+- Small code formatting change
+
 # 3.7.3
 - Add more comparison methods to notebooks
 - Change `generate_figure` default layout
