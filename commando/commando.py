@@ -8,6 +8,7 @@ from scipy import stats
 from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.neighbors import KNeighborsClassifier
 import torch
 import torch.nn as nn  # noqa
 import torch.optim as optim
@@ -20,7 +21,7 @@ from unioncom.utils import (
 
 from .model import edModel
 from .nn_funcs import gw_loss, knn_dist, knn_sim, nlma_loss, uc_loss  # noqa
-from .utilities import time_logger, transfer_accuracy, uc_visualize
+from .utilities import time_logger, uc_visualize
 
 
 class ComManDo(uc.UnionCom):
@@ -393,17 +394,20 @@ class ComManDo(uc.UnionCom):
 
         timer = time_logger()
         if self.pca_dim is not None:
-            # Why won't this work?
-            # pca_list = [PCA(n_components=self.pca_dim).fit(data) for data in self.dataset]
-            # pca_list = [(lambda x: pca.transform(x)) for pca in pca_list]
-            # print(pca_list[0](self.dataset[0]))
-
-            pca1 = PCA(n_components=self.pca_dim[0]).fit(self.dataset[0])
-            pca2 = PCA(n_components=self.pca_dim[1]).fit(self.dataset[1])
-            pca_list = [lambda x: pca1.transform(x), lambda x: pca2.transform(x)]
+            pca_list = []
+            for dim, data in zip(self.pca_dim, self.dataset):
+                if dim is not None:
+                    pca = PCA(n_components=dim).fit(data)
+                    pca_list.append(pca)
+                    pca_list[0].transform(self.dataset[0])
+                else:
+                    pca_list.append(lambda x: x)
+            # Python bug?  Doesn't work, overwrites pca
+            # pca_list = [lambda x: pca.transform(x) for pca in pca_list]
+            pca_list = [pca.transform for pca in pca_list]
 
             # Transform datasets (Maybe find less destructive way?)
-            self.dataset = [transform(x) for transform, x in zip(pca_list, self.dataset)]
+            self.dataset = [pca_transform(x) for pca_transform, x in zip(pca_list, self.dataset)]
             self.col = [x.shape[1] for x in self.dataset]
         else:
             pca_list = None
@@ -776,10 +780,24 @@ class ComManDo(uc.UnionCom):
             print(dist)
         return np.array(list(average_representation.keys())), dist
 
-    def test_LabelTA(self, integrated_data, datatype):
+    def test_LabelTA(self, integrated_data, datatype, k=None, return_k=False):
         """Modified version of UnionCom ``test_LabelTA`` to return acc"""
-        acc = transfer_accuracy(integrated_data[0], integrated_data[1], datatype[0], datatype[1])
+        if k == None:
+            # Set to 20% of avg class size if no k provided
+            total_size = min(*[len(d) for d in datatype])
+            num_classes = len(np.unique(np.concatenate(datatype)).flatten())
+            k = int(.2 * total_size / num_classes)
+        knn = KNeighborsClassifier(n_neighbors=k)
+        knn.fit(integrated_data[1], datatype[1])
+        type1_predict = knn.predict(integrated_data[0])
+        count = 0
+        for label1, label2 in zip(type1_predict, datatype[0]):
+        	if label1 == label2:
+        		count += 1
+        acc = count / len(datatype[0])
         print(f"label transfer accuracy: {acc}")
+        if return_k:
+            return acc, k
         return acc
 
     def Visualize(self, data, integrated_data, datatype=None, mode=None):

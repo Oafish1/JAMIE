@@ -1,3 +1,13 @@
+# 3.7.5
+- Added changeable `k` for `test_LabelTA` and integrated into `generate_figure`
+ - Automatically chooses appropriate `k`
+- Added optional `integrated_alg_shortnames` to `generate_figure`
+- Fixed a bug where PCA was used on singular `None` modalities
+- Fixed (subverted) a python bug which culls vars exclusively in lambda functions
+ - Previously prevented proper usage of multiple `pca_dim`
+- `generate_figure` formatting changes
+- Reruns, including PCA fix for `scMNC-Visual`
+
 # 3.7.4
 - `generate_figure` add multi-column colors
 - `generate_figure` formatting, title, layout changes

@@ -64,10 +64,12 @@ class generate_figure():
         labels,
         integrated_data=[],
         integrated_alg_names=[],
+        integrated_alg_shortnames=None,
         alg_groups=None,
         dataset_names=None,
         # Style
         scale=20,
+        dpi=600,
         legend_ncol=2,
         size_bound=[.25, .5],
         vertical_scale=.75,
@@ -82,6 +84,7 @@ class generate_figure():
         # Simulations
         simple_num_features=32,
         num_best_reconstructed_features=4,
+        show_sorted_features={},
         # Remove Visualizations
         exclude_predict=[],
         skip_partial=True,
@@ -116,11 +119,16 @@ class generate_figure():
         self.labels = labels
         self.integrated_data = ensure_list(integrated_data)
         self.integrated_alg_names = ensure_list(integrated_alg_names)
+        if integrated_alg_shortnames is None:
+            self.integrated_alg_shortnames = self.integrated_alg_names
+        else:
+            self.integrated_alg_shortnames = ensure_list(integrated_alg_shortnames)
         self.alg_groups = (
             alg_groups if alg_groups is not None else [0]*len(self.integrated_data))
         self.dataset_names = dataset_names
         # Style
         self.scale = scale
+        self.dpi = dpi
         self.legend_ncol = legend_ncol
         self.size_bound = size_bound
         self.vertical_scale = vertical_scale
@@ -134,6 +142,7 @@ class generate_figure():
         # Simulations
         self.simple_num_features = simple_num_features
         self.num_best_reconstructed_features = num_best_reconstructed_features
+        self.show_sorted_features = show_sorted_features
         # Remove Visualizations
         self.exclude_predict = exclude_predict
         self.skip_partial = skip_partial
@@ -187,10 +196,10 @@ class generate_figure():
         figsize = (scale, scale * vertical_scale * sum(height_ratios))
 
         # Create figure
-        fig = plt.figure(figsize=figsize, constrained_layout=True)
-        fig.suptitle(' ')
+        self._fig = plt.figure(figsize=figsize, constrained_layout=True, dpi=self.dpi)
+        self._fig.suptitle(' ')
         subfigs = ensure_list(
-            fig.subfigures(len(height_ratios), 1, height_ratios=height_ratios, wspace=.07))
+            self._fig.subfigures(len(height_ratios), 1, height_ratios=height_ratios, wspace=.07))
         # gridspec = subfigs[0]._subplotspec.get_gridspec()
 
         # Plot
@@ -224,6 +233,11 @@ class generate_figure():
             if group_filter is not None
             else self.integrated_alg_names
         )
+        integrated_alg_shortnames = (
+            self.integrated_alg_shortnames[self.alg_groups == group_filter]
+            if group_filter is not None
+            else self.integrated_alg_shortnames
+        )
         colors = (
             self.colors[self.alg_groups == group_filter]
             if group_filter is not None
@@ -235,6 +249,7 @@ class generate_figure():
             num_algorithms,
             integrated_data,
             integrated_alg_names,
+            integrated_alg_shortnames,
             colors,
             use_raw_in_integrated,
         )
@@ -280,8 +295,14 @@ class generate_figure():
         num_modalities = self.num_modalities
         integrated_use_pca = self.integrated_use_pca
         integrated_rows = self.integrated_rows
-        num_algorithms, integrated_data, integrated_alg_names, _, use_raw_in_integrated = (
-            self._get_integrated_group(group_filter))
+        (
+            num_algorithms,
+            integrated_data,
+            integrated_alg_names,
+            integrated_alg_shortnames,
+            _,
+            use_raw_in_integrated,
+        ) = self._get_integrated_group(group_filter)
 
         csubfigs = cfig.subfigures(
             math.ceil((num_algorithms + use_raw_in_integrated) / integrated_rows),
@@ -318,7 +339,7 @@ class generate_figure():
                 for label in np.unique(np.concatenate(labels)):
                     data_subset = np.transpose(plot_data[labels[i] == label])[:2, :]
                     ax.scatter(*data_subset, s=5., label=label)
-                suptitle = integrated_alg_names[j-use_raw_in_integrated]
+                suptitle = integrated_alg_shortnames[j-use_raw_in_integrated]
                 title = dataset_names[i]
                 ax.set_title(suptitle + ' - ' + title)
                 if integrated_use_pca:
@@ -342,7 +363,7 @@ class generate_figure():
         types = self.types
         dataset_names = self.dataset_names
         cm_trained = self.cm_trained
-        num_algorithms, integrated_data, integrated_alg_names, colors, _ = (
+        num_algorithms, integrated_data, integrated_alg_names, _, colors, _ = (
             self._get_integrated_group(group_filter))
 
         csubfigs = ensure_list(
@@ -369,20 +390,22 @@ class generate_figure():
             acc_dict['Davies-Bouldin:\n' + name] = []
         for i in range(num_algorithms):
             with contextlib.redirect_stdout(None):
-                acc_dict['Label Transfer Accuracy'].append(
-                    cm_trained.test_LabelTA(integrated_data[i], types))
-                acc_dict['FOSCTTM'].append(
-                    cm_trained.test_closer(integrated_data[i]))
+                lta, k = cm_trained.test_LabelTA(integrated_data[i], types, return_k=True)
+                acc_dict['Label Transfer Accuracy'].append(lta)
+                acc_dict['FOSCTTM'].append(cm_trained.test_closer(integrated_data[i]))
                 for j, name in enumerate(dataset_names):
                     acc_dict['Davies-Bouldin:\n' + name].append(
                         davies_bouldin_score(integrated_data[i][j], types[j]))
-        keys_01 = ['Algorithm', 'Label Transfer Accuracy', 'FOSCTTM']
+        acc_dict[f'Label Transfer Accuracy (k={k})'] = acc_dict.pop('Label Transfer Accuracy')
+        keys_01 = ['Algorithm', f'Label Transfer Accuracy (k={k})', 'FOSCTTM']
         keys_0i = ['Algorithm'] + ['Davies-Bouldin:\n' + name for name in dataset_names]
         df_01, df_0i = (pd.DataFrame({k: v for k, v in acc_dict.items() if k in keys}).melt(
             id_vars=list(keys)[:1],
             value_vars=list(keys)[1:])
             for keys in (keys_01, keys_0i))
         dfs = [df_01, df_0i]
+        df_names = ['Cell-Type Prediction Efficacy', 'Worst-Case Cluster Mixing']
+        df_log = [False, True]
         for i, df in enumerate(dfs):
             ax = csubfigs[csubfig_idx].subplots(1, 1)
             pl = sns.barplot(
@@ -394,11 +417,12 @@ class generate_figure():
                 palette=colors)
             ax.set_xlabel(None)
             ax.set_ylabel(None)
-            if i == 0:
-                prefix = 'Bounded'
-            else:
-                prefix = 'Unbounded'
-            ax.set_title(prefix + ' ' + 'Metrics by Algorithm')
+            ax.set_title(df_names[i])
+            if df_log[i]:
+                pl.set_yscale('log')
+                ticks = [2, 5, 10]
+                pl.set_yticks(ticks)
+                pl.set_yticklabels(ticks)
             if i != 0:
                 pl.legend_.remove()
             else:
@@ -503,7 +527,7 @@ class generate_figure():
         types = self.types
         labels = self.labels
         dataset_names = self.dataset_names
-        num_algorithms, integrated_data, integrated_alg_names, colors, _ = (
+        num_algorithms, integrated_data, integrated_alg_names, _, colors, _ = (
             self._get_integrated_group(group_filter))
 
         axs = cfig.subplots(1, num_modalities)
@@ -529,7 +553,7 @@ class generate_figure():
                 ax=ax,
                 palette=colors,
             )
-            ax.set_title(dataset_names[i] + ' Silhouette Score')
+            ax.set_title(dataset_names[i] + ' Isolation')
             if i == 0 and legend:
                 ax.legend()
             else:
@@ -553,6 +577,7 @@ class generate_figure():
         cm_trained = self.cm_trained
         dataset = self.dataset
         reconstruction_features = self.reconstruction_features
+        show_sorted_features = self.show_sorted_features
         labels = self.labels
         dataset_names = self.dataset_names
         simple_num_features = self.simple_num_features
@@ -578,9 +603,12 @@ class generate_figure():
                 for k in range(predicted.shape[1]):
                     corr_per_feature.append(r_regression(predicted[:, [k]], actual[:, k])[0])
                 # Get best features
-                sorted_feature_idx = np.argsort(
+                feat = np.argsort(
                     np.nan_to_num(corr_per_feature))[::-1]
-                feat = sorted_feature_idx[:self.num_best_reconstructed_features]
+                if (i, j) in show_sorted_features:
+                    feat_show_idx = self.show_sorted_features[(i, j)]
+                else:
+                    feat_show_idx = [0, 1]
                 # Sort
                 corr_per_feature.sort()
 
@@ -599,7 +627,7 @@ class generate_figure():
                 axi = 0
                 # Real
                 for label in np.unique(np.concatenate(labels)):
-                    subdata = np.transpose(actual[:, feat[:2]][labels[j] == label])
+                    subdata = np.transpose(actual[:, feat[feat_show_idx]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'True {dataset_names[j]}')
                 axs[axi].set_xlabel('Latent Feature 1')
@@ -608,7 +636,7 @@ class generate_figure():
 
                 # Predicted
                 for label in np.unique(np.concatenate(labels)):
-                    subdata = np.transpose(predicted[:, feat[:2]][labels[j] == label])
+                    subdata = np.transpose(predicted[:, feat[feat_show_idx]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'Imputed {dataset_names[j]}')
                 axs[axi].set_xlabel('Latent Feature 1')
@@ -620,7 +648,7 @@ class generate_figure():
                     nn_predicted = predict_nn(
                         torch.tensor(dataset[i]).float(), torch.tensor(dataset[j]).float())
                     for label in np.unique(np.concatenate(labels)):
-                        subdata = np.transpose(nn_predicted[:, feat[:2]][labels[j] == label])
+                        subdata = np.transpose(nn_predicted[:, feat[feat_show_idx]][labels[j] == label])
                         axs[axi].scatter(*subdata, label=label, s=5.)
                     axs[axi].set_title('NN Predicted')
                     axs[axi].set_xlabel('Latent Feature 1')
@@ -663,9 +691,9 @@ class generate_figure():
 
                 # Predicted vs True section
                 csubfig = csubfigs[fig_idx]
-                axs = csubfig.subplots(1, len(feat))
+                axs = csubfig.subplots(1, self.num_best_reconstructed_features)
                 fig_idx += 1
-                for feature_idx, ax in zip(feat, axs):
+                for feature_idx, ax in zip(feat[:self.num_best_reconstructed_features], axs):
                     for label in np.unique(np.concatenate(labels)):
                         true = np.transpose(actual[:, feature_idx][labels[j] == label])
                         pred = np.transpose(predicted[:, feature_idx][labels[j] == label])

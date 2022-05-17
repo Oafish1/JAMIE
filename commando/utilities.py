@@ -8,7 +8,6 @@ from sklearn.manifold import TSNE
 import torch
 import torch.nn as nn
 import umap
-from unioncom.test import transfer_accuracy  # noqa
 
 
 def reduce_sample_data(df, num_samples=1000, num_features=1000):
