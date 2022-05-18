@@ -398,13 +398,11 @@ class ComManDo(uc.UnionCom):
             for dim, data in zip(self.pca_dim, self.dataset):
                 if dim is not None:
                     pca = PCA(n_components=dim).fit(data)
-                    pca_list.append(pca)
-                    pca_list[0].transform(self.dataset[0])
+                    pca_list.append(pca.transform)
                 else:
                     pca_list.append(lambda x: x)
             # Python bug?  Doesn't work, overwrites pca
             # pca_list = [lambda x: pca.transform(x) for pca in pca_list]
-            pca_list = [pca.transform for pca in pca_list]
 
             # Transform datasets (Maybe find less destructive way?)
             self.dataset = [pca_transform(x) for pca_transform, x in zip(pca_list, self.dataset)]

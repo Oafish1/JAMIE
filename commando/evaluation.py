@@ -69,7 +69,7 @@ class generate_figure():
         dataset_names=None,
         # Style
         scale=20,
-        dpi=600,
+        dpi=300,
         legend_ncol=2,
         size_bound=[.25, .5],
         vertical_scale=.75,
@@ -553,7 +553,7 @@ class generate_figure():
                 ax=ax,
                 palette=colors,
             )
-            ax.set_title(dataset_names[i] + ' Isolation')
+            ax.set_title(dataset_names[i] + ' Cell-Type Separability')
             if i == 0 and legend:
                 ax.legend()
             else:

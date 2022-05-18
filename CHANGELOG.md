@@ -1,3 +1,7 @@
+# 3.7.6
+- Bugfix with `None` pca argument
+- Reruns, small notebook formatting changes
+
 # 3.7.5
 - Added changeable `k` for `test_LabelTA` and integrated into `generate_figure`
  - Automatically chooses appropriate `k`
