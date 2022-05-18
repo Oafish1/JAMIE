@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.decomposition import PCA
-from sklearn.feature_selection import r_regression
+from sklearn.feature_selection import f_regression, r_regression
 from sklearn.metrics import davies_bouldin_score, silhouette_samples
 import torch
 
@@ -67,6 +67,7 @@ class generate_figure():
         integrated_alg_shortnames=None,
         alg_groups=None,
         dataset_names=None,
+        feature_names=None,
         # Style
         scale=20,
         dpi=300,
@@ -126,6 +127,7 @@ class generate_figure():
         self.alg_groups = (
             alg_groups if alg_groups is not None else [0]*len(self.integrated_data))
         self.dataset_names = dataset_names
+        self.feature_names = feature_names
         # Style
         self.scale = scale
         self.dpi = dpi
@@ -343,7 +345,7 @@ class generate_figure():
                 title = dataset_names[i]
                 ax.set_title(suptitle + ' - ' + title)
                 if integrated_use_pca:
-                    type_text = 'PC'
+                    type_text = 'Component'
                 else:
                     type_text = 'Feature'
                 ax.set_xlabel(type_text + '-1')
@@ -553,7 +555,7 @@ class generate_figure():
                 ax=ax,
                 palette=colors,
             )
-            ax.set_title(dataset_names[i] + ' Cell-Type Separability')
+            ax.set_title('Cell-Type Separability on ' + dataset_names[i] + ' Latent Space')
             if i == 0 and legend:
                 ax.legend()
             else:
@@ -600,38 +602,46 @@ class generate_figure():
 
                 # Get correlations per feature
                 corr_per_feature = []
+                p_per_feature = []
                 for k in range(predicted.shape[1]):
+                    # There is a more optimal way to do this
                     corr_per_feature.append(r_regression(predicted[:, [k]], actual[:, k])[0])
+                    p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
+                corr_per_feature = np.array(corr_per_feature)
+                p_per_feature = np.array(p_per_feature)
                 # Get best features
-                feat = np.argsort(
-                    np.nan_to_num(corr_per_feature))[::-1]
+                feat = np.argsort(np.nan_to_num(corr_per_feature))[::-1]
                 if (i, j) in show_sorted_features:
                     feat_show_idx = self.show_sorted_features[(i, j)]
                 else:
                     feat_show_idx = [0, 1]
-                # Sort
-                corr_per_feature.sort()
 
                 # Get correlations per sample
                 corr_per_sample = []
+                p_per_sample = []
                 for k in range(predicted.shape[0]):
                     corr_per_sample.append(r_regression(
                         np.transpose(predicted[[k], :]), np.transpose(actual[k, :]))[0])
-                # Sort
-                corr_per_sample.sort()
+                    p_per_sample.append(f_regression(
+                        np.transpose(predicted[[k], :]), np.transpose(actual[k, :]))[0])
+                corr_per_sample = np.array(corr_per_sample)
+                p_per_sample = np.array(p_per_sample)
+                samp = np.argsort(np.nan_to_num(corr_per_sample))[::-1]
 
                 # Setup
                 if (i, j) in reconstruction_features:
                     feat = reconstruction_features[(i, j)]
-
+                feat_names = [f'Feature {i+1}' for i in range(len(feat))]
+                if self.feature_names is not None and self.feature_names[j] is not None:
+                    feat_names = self.feature_names[j]
                 axi = 0
                 # Real
                 for label in np.unique(np.concatenate(labels)):
                     subdata = np.transpose(actual[:, feat[feat_show_idx]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'True {dataset_names[j]}')
-                axs[axi].set_xlabel('Latent Feature 1')
-                axs[axi].set_ylabel('Latent Feature 2')
+                axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
+                axs[axi].set_ylabel(feat_names[feat_show_idx[1]])
                 axi += 1
 
                 # Predicted
@@ -639,8 +649,8 @@ class generate_figure():
                     subdata = np.transpose(predicted[:, feat[feat_show_idx]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'Imputed {dataset_names[j]}')
-                axs[axi].set_xlabel('Latent Feature 1')
-                axs[axi].set_ylabel('Latent Feature 2')
+                axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
+                axs[axi].set_ylabel(feat_names[feat_show_idx[1]])
                 axi += 1
 
                 # NN Predicted
@@ -651,14 +661,14 @@ class generate_figure():
                         subdata = np.transpose(nn_predicted[:, feat[feat_show_idx]][labels[j] == label])
                         axs[axi].scatter(*subdata, label=label, s=5.)
                     axs[axi].set_title('NN Predicted')
-                    axs[axi].set_xlabel('Latent Feature 1')
-                    axs[axi].set_ylabel('Latent Feature 2')
+                    axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
+                    axs[axi].set_ylabel(feat_names[feat_show_idx[1]])
                     axi += 1
 
                 # Correlation per feature
                 xaxis = np.linspace(0, 1, len(corr_per_feature))
-                axs[axi].plot(xaxis, corr_per_feature)
-                axs[axi].fill_between(xaxis, 0, corr_per_feature, alpha=.25)
+                axs[axi].plot(xaxis, corr_per_feature[feat[::-1]])
+                axs[axi].fill_between(xaxis, 0, corr_per_feature[feat[::-1]], alpha=.25)
                 axs[axi].set_title('Correlation by Feature')
                 axs[axi].set_xlabel('Percentile of Features')
                 axs[axi].set_ylabel('Correlation')
@@ -666,8 +676,8 @@ class generate_figure():
 
                 # Correlation per sample
                 xaxis = np.linspace(0, 1, len(corr_per_sample))
-                axs[axi].plot(xaxis, corr_per_sample)
-                axs[axi].fill_between(xaxis, 0, corr_per_sample, alpha=.25)
+                axs[axi].plot(xaxis, corr_per_sample[samp[::-1]])
+                axs[axi].fill_between(xaxis, 0, corr_per_sample[samp[::-1]], alpha=.25)
                 axs[axi].set_title('Correlation by Sample')
                 axs[axi].set_xlabel('Percentile of Samples')
                 axs[axi].set_ylabel('Correlation')
@@ -689,7 +699,7 @@ class generate_figure():
                     axs[axi].set_ylabel('Linear Encoding Weight')
                     axi += 1
 
-                # Predicted vs True section
+                # Calibration plots
                 csubfig = csubfigs[fig_idx]
                 axs = csubfig.subplots(1, self.num_best_reconstructed_features)
                 fig_idx += 1
@@ -703,9 +713,14 @@ class generate_figure():
                         max(ax.get_xlim()[0], ax.get_ylim()[0]),
                         min(ax.get_xlim()[1], ax.get_ylim()[1])]
                     ax.plot(lims, lims, 'k-', alpha=0.75)
+                    # Add corr info
+                    ax.annotate(
+                        f'r={corr_per_feature[feature_idx]:.3f}; '
+                        f'p<{p_per_feature[feature_idx]:.1e}',
+                        xy=(.05, .95), xycoords='axes fraction')
 
                     ax.set_title(f'{dataset_names[j]} Calibration Plot')
-                    ax.set_xlabel('True Value')
+                    ax.set_xlabel(f'True Value ({feat_names[feature_idx]})')
                     ax.set_ylabel('Predicted Value')
         # cfig.suptitle('Modality Prediction')
 
