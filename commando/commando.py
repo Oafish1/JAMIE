@@ -780,7 +780,7 @@ class ComManDo(uc.UnionCom):
 
     def test_LabelTA(self, integrated_data, datatype, k=None, return_k=False):
         """Modified version of UnionCom ``test_LabelTA`` to return acc"""
-        if k == None:
+        if k is None:
             # Set to 20% of avg class size if no k provided
             total_size = min(*[len(d) for d in datatype])
             num_classes = len(np.unique(np.concatenate(datatype)).flatten())
@@ -790,8 +790,8 @@ class ComManDo(uc.UnionCom):
         type1_predict = knn.predict(integrated_data[0])
         count = 0
         for label1, label2 in zip(type1_predict, datatype[0]):
-        	if label1 == label2:
-        		count += 1
+            if label1 == label2:
+                count += 1
         acc = count / len(datatype[0])
         print(f"label transfer accuracy: {acc}")
         if return_k:

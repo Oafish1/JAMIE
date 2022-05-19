@@ -1,4 +1,5 @@
 # 3.7.7
+- Add configurable legend to `generate_figure`
 - Added correlation and p-value to calibration plots
 - Added `feature_names` argument to `generate_figure`
 - Many Formatting changes for `generate_figure`

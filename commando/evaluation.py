@@ -81,6 +81,7 @@ class generate_figure():
         reconstruction_features={},
         integrated_use_pca=False,
         raw_data_group=0,
+        raw_legend_plot=0,
         integrated_rows=1,
         # Simulations
         simple_num_features=32,
@@ -140,6 +141,7 @@ class generate_figure():
         self.reconstruction_features = reconstruction_features
         self.integrated_use_pca = integrated_use_pca
         self.raw_data_group = raw_data_group
+        self.raw_legend_plot = raw_legend_plot
         self.integrated_rows = integrated_rows
         # Simulations
         self.simple_num_features = simple_num_features
@@ -281,7 +283,8 @@ class generate_figure():
             ax.set_xlabel('PC-1')
             ax.set_ylabel('PC-2')
             # ax.set_aspect('equal', adjustable='box')
-        ax.legend(ncol=self.legend_ncol)
+            if i == self.raw_legend_plot:
+                ax.legend(ncol=self.legend_ncol)
         # fig.suptitle('Raw Data')
 
     def _get_integrated_data_shape(self):
@@ -656,9 +659,11 @@ class generate_figure():
                 # NN Predicted
                 if not skip_nn:
                     nn_predicted = predict_nn(
-                        torch.tensor(dataset[i]).float(), torch.tensor(dataset[j]).float())
+                        torch.tensor(dataset[i]).float(),
+                        torch.tensor(dataset[j]).float())
                     for label in np.unique(np.concatenate(labels)):
-                        subdata = np.transpose(nn_predicted[:, feat[feat_show_idx]][labels[j] == label])
+                        subdata = np.transpose(
+                            nn_predicted[:, feat[feat_show_idx]][labels[j] == label])
                         axs[axi].scatter(*subdata, label=label, s=5.)
                     axs[axi].set_title('NN Predicted')
                     axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
