@@ -722,10 +722,11 @@ class generate_figure():
                     ax.annotate(
                         f'r={corr_per_feature[feature_idx]:.3f}; '
                         f'p<{p_per_feature[feature_idx]:.1e}',
-                        xy=(.05, .95), xycoords='axes fraction')
+                        xy=(.05, .9), xycoords='axes fraction',
+                        fontsize=15)
 
-                    ax.set_title(f'{dataset_names[j]} Calibration Plot')
-                    ax.set_xlabel(f'True Value ({feat_names[feature_idx]})')
+                    ax.set_title(f'{feat_names[feature_idx]}')
+                    ax.set_xlabel('True Value')
                     ax.set_ylabel('Predicted Value')
         # cfig.suptitle('Modality Prediction')
 

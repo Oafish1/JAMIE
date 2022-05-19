@@ -3,6 +3,8 @@
 - Added correlation and p-value to calibration plots
 - Added `feature_names` argument to `generate_figure`
 - Many Formatting changes for `generate_figure`
+- Rename and format calibration plot
+- Reruns
 
 # 3.7.6
 - Bugfix with `None` pca argument
