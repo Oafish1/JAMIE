@@ -643,8 +643,8 @@ class generate_figure():
                     subdata = np.transpose(actual[:, feat[feat_show_idx]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'True {dataset_names[j]}')
-                axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
-                axs[axi].set_ylabel(feat_names[feat_show_idx[1]])
+                axs[axi].set_xlabel(feat_names[feat[feat_show_idx[0]]])
+                axs[axi].set_ylabel(feat_names[feat[feat_show_idx[1]]])
                 axi += 1
 
                 # Predicted
@@ -652,8 +652,8 @@ class generate_figure():
                     subdata = np.transpose(predicted[:, feat[feat_show_idx]][labels[j] == label])
                     axs[axi].scatter(*subdata, label=label, s=5.)
                 axs[axi].set_title(f'Imputed {dataset_names[j]}')
-                axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
-                axs[axi].set_ylabel(feat_names[feat_show_idx[1]])
+                axs[axi].set_xlabel(feat_names[feat[feat_show_idx[0]]])
+                axs[axi].set_ylabel(feat_names[feat[feat_show_idx[1]]])
                 axi += 1
 
                 # NN Predicted
@@ -666,8 +666,8 @@ class generate_figure():
                             nn_predicted[:, feat[feat_show_idx]][labels[j] == label])
                         axs[axi].scatter(*subdata, label=label, s=5.)
                     axs[axi].set_title('NN Predicted')
-                    axs[axi].set_xlabel(feat_names[feat_show_idx[0]])
-                    axs[axi].set_ylabel(feat_names[feat_show_idx[1]])
+                    axs[axi].set_xlabel(feat_names[feat[feat_show_idx[0]]])
+                    axs[axi].set_ylabel(feat_names[feat[feat_show_idx[1]]])
                     axi += 1
 
                 # Correlation per feature
