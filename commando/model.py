@@ -7,10 +7,13 @@ class edModel(nn.Module):
     Encoder-decoder model for use in dimensionality reduction.
     In the style of UnionCom's ``Model.py``
     """
-    def __init__(self, input_dim, output_dim, preprocessing=None):
+    def __init__(self, input_dim, output_dim, preprocessing=None, sigma=None):
         super().__init__()
 
         self.num_modalities = len(input_dim)
+        self.sigma = sigma
+        if self.sigma is None:
+            self.sigma = self.num_modalities * [1 / self.num_modalities]
         # For outputting the model with preprocessing included
         if preprocessing is None:
             self.preprocessing = self.num_modalities * [lambda x: x]
@@ -66,11 +69,14 @@ class edModel(nn.Module):
         embedded = [self.encoders[i](X[i]) for i in range(self.num_modalities)]
         combined = [
             (
-                embedded[i]
-                + torch.mm(
+                self.sigma[i] * embedded[i]
+                + self.sigma[(i + 1) % 2] * torch.mm(
                     corr if i == 0 else torch.t(corr),
                     embedded[(i + 1) % 2])
-            ) / (1. + corr.sum((i + 1) % 2).reshape(-1, 1))
+            ) / (
+                self.sigma[i]
+                + self.sigma[(i + 1) % 2] * corr.sum((i + 1) % 2).reshape(-1, 1)
+            )
             for i in range(self.num_modalities)
         ]
         reconstructed = [self.decoders[i](combined[i]) for i in range(self.num_modalities)]

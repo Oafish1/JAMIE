@@ -409,13 +409,15 @@ class ComManDo(uc.UnionCom):
             self.col = [x.shape[1] for x in self.dataset]
         else:
             pca_list = None
+        sigma = torch.rand(2)
         self.model = (
             self.model_class(
                 self.col,
                 self.output_dim,
                 preprocessing=pca_list,
+                sigma=sigma,
             ).to(self.device))
-        optimizer = optim.AdamW(self.model.parameters(), lr=self.lr)
+        optimizer = optim.AdamW([sigma, *self.model.parameters()], lr=self.lr)
 
         def sim_diff_func(a, b):
             if self.dist_method == 'cosine':

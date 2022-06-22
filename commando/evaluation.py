@@ -7,7 +7,8 @@ import pandas as pd
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import f_regression, r_regression
-from sklearn.metrics import davies_bouldin_score, silhouette_samples
+from sklearn.metrics import (
+    davies_bouldin_score, roc_auc_score, roc_curve, silhouette_samples)
 import torch
 
 from .commando import ComManDo
@@ -173,31 +174,19 @@ class generate_figure():
 
         self.colors = np.array(colors[:self.num_algorithms])
 
-        # What to plot
-        to_run = (
-            lambda x: self._plot_raw_data(x, ps_scale=.5),
-            lambda x: self._group_plot(x, self._plot_integrated_data),
-            self._plot_accuracy_metrics,
-            self._plot_silhouette_value_boxplots,
-            self._plot_reconstruct_modality,
-        )
-        to_run_size = (
-            self._get_raw_data_shape(),
-            self._group_shape(self._get_integrated_data_shape()),
-            self._get_accuracy_metrics_shape(),
-            self._get_silhouette_value_boxplots_shape(),
-            self._get_reconstruct_modality_shape(),
-        )
-
+    def plot(self, to_run, to_run_size=None):
+        """Perform plotting"""
+        if to_run_size is None:
+            to_run_size = len(to_run) * [(1, 1, 1)]
         # Sizing
         height_manual_scale = [shape[0] for shape in to_run_size]
         height_numerators = [shape[1] for shape in to_run_size]
         height_denominators = [shape[2] for shape in to_run_size]
         height_denominators = [
-            min(1/size_bound[0], max(1/size_bound[1], x)) for x in height_denominators]
+            min(1/self.size_bound[0], max(1/self.size_bound[1], x)) for x in height_denominators]
         height_ratios = [
             s*n/d for s, n, d in zip(height_manual_scale, height_numerators, height_denominators)]
-        figsize = (scale, scale * vertical_scale * sum(height_ratios))
+        figsize = (self.scale, self.scale * self.vertical_scale * sum(height_ratios))
 
         # Create figure
         self._fig = plt.figure(figsize=figsize, constrained_layout=True, dpi=self.dpi)
@@ -210,6 +199,11 @@ class generate_figure():
         assert len(subfigs) == len(to_run), '``to_run`` and ``to_run_size`` must match in shape'
         for cfig, to_run_func in zip(subfigs, to_run):
             to_run_func(cfig)
+        plt.show()
+
+    def get_fig(self):
+        """Return figure object, must be run beforehand"""
+        return self._fig
 
     def _group_shape(self, shape):
         shape_array = [x for x in shape]
@@ -730,6 +724,39 @@ class generate_figure():
                     ax.set_ylabel('Predicted Value')
         # cfig.suptitle('Modality Prediction')
 
-        # plt.tight_layout()
-        # plt.subplots_adjust(top=1)
-        plt.show()
+    def _get_auroc_shape(self):
+        scale = 1
+        rows = 1
+        cols = self.num_modalities
+        return scale, rows, cols
+
+    def _plot_auroc(self, cfig):
+        cm_trained = self.cm_trained
+        dataset = self.dataset
+        dataset_names = self.dataset_names
+        num_modalities = self.num_modalities
+
+        axs = ensure_list(cfig.subplots(1, num_modalities))
+        for i in range(num_modalities):
+            ax = axs[i]
+            pred = cm_trained.modal_predict(dataset[i], i)
+            true = dataset[(i + 1) % 2]; true = 1 * (true > np.median(true))
+
+            # fpr, tpr, _ = roc_curve(true.flatten(), pred.flatten())
+            # ax.plot(fpr, tpr)
+            # ax.set_xlabel('FPR')
+            # ax.set_ylabel('TPR')
+            # ax.set_title(f'ROC {dataset_names[(i + 1) % 2]}')
+
+            feat_auc = []
+            for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+                if len(np.unique(tr)) == 2:
+                    feat_auc.append(roc_auc_score(tr, pr))
+
+            sorted = np.sort(feat_auc)
+            xaxis = np.linspace(0, 1, len(sorted))
+            ax.plot(xaxis, sorted)
+            ax.fill_between(xaxis, 0, sorted, alpha=.25)
+            ax.set_title(f'AUROC by {dataset_names[(i + 1) % 2]}')
+            ax.set_xlabel('Feature Percentile')
+            ax.set_ylabel('AUROC')

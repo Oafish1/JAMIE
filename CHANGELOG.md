@@ -1,3 +1,7 @@
+# 3.8.0 (IN PROGRESS)
+- Add trainable weighting to model aggregation function
+- Update evaluation module with imputed AUROC distribution
+
 # 3.7.7
 - Add configurable legend to `generate_figure`
 - Added correlation and p-value to calibration plots
