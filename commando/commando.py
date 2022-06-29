@@ -395,12 +395,15 @@ class ComManDo(uc.UnionCom):
         timer = time_logger()
         if self.pca_dim is not None:
             pca_list = []
+            pca_inv_list = []
             for dim, data in zip(self.pca_dim, self.dataset):
                 if dim is not None:
                     pca = PCA(n_components=dim).fit(data)
                     pca_list.append(pca.transform)
+                    pca_inv_list.append(pca.inverse_transform)
                 else:
                     pca_list.append(lambda x: x)
+                    pca_inv_list.append(lambda x: x)
             # Python bug?  Doesn't work, overwrites pca
             # pca_list = [lambda x: pca.transform(x) for pca in pca_list]
 
@@ -409,12 +412,14 @@ class ComManDo(uc.UnionCom):
             self.col = [x.shape[1] for x in self.dataset]
         else:
             pca_list = None
+            pca_inv_list = None
         sigma = torch.rand(2)
         self.model = (
             self.model_class(
                 self.col,
                 self.output_dim,
                 preprocessing=pca_list,
+                preprocessing_inverse=pca_inv_list,
                 sigma=sigma,
             ).to(self.device))
         optimizer = optim.AdamW([sigma, *self.model.parameters()], lr=self.lr)
@@ -624,6 +629,8 @@ class ComManDo(uc.UnionCom):
 
                 # Record loss
                 if self.loss_weights is not None:
+                    assert len(losses) == len(self.loss_weights), (
+                        f'There are {len(losses)} losses and {len(self.loss_weights)} weights')
                     batch_loss = sum([lo * wt for lo, wt in zip(losses, self.loss_weights)])
                 else:
                     batch_loss = sum(losses)
@@ -671,16 +678,20 @@ class ComManDo(uc.UnionCom):
         # timer.aggregate()
         return integrated_data
 
-    def modal_predict(self, data, modality):
+    def modal_predict(self, data, modality, reverse_pre=True):
         """Predict the opposite modality from dataset ``data`` in modality ``modality``"""
         assert self.model is not None, 'Model must be trained before modal prediction.'
 
         to_modality = (modality + 1) % self.dataset_num
         pre_function = self.model.preprocessing[modality]
-        return self.model.decoders[to_modality](
+        out = self.model.decoders[to_modality](
             self.model.encoders[modality](
                 torch.tensor(pre_function(data)).float()
             )).detach().cpu().numpy()
+        if reverse_pre:
+            post_function = self.model.preprocessing_inverse[to_modality]
+            out = post_function(out)
+        return out
 
     def compute_distances(self):
         """Helper function to compute distances for each dataset"""

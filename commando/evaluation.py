@@ -9,6 +9,8 @@ from sklearn.decomposition import PCA
 from sklearn.feature_selection import f_regression, r_regression
 from sklearn.metrics import (
     davies_bouldin_score, roc_auc_score, roc_curve, silhouette_samples)
+from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.neighbors import KNeighborsClassifier
 import torch
 
 from .commando import ComManDo
@@ -760,3 +762,213 @@ class generate_figure():
             ax.set_title(f'AUROC by {dataset_names[(i + 1) % 2]}')
             ax.set_xlabel('Feature Percentile')
             ax.set_ylabel('AUROC')
+
+
+
+def test_closer(
+    integrated_data,
+    distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+):
+    """Test fraction of samples closer than the true match"""
+    # ASDF: 3+ datasets and non-aligned data
+    assert len(integrated_data) == 2, 'Two datasets are supported for FOSCTTM'
+
+    distances = distance_metric(np.concatenate(integrated_data, axis=0))
+    size = integrated_data[0].shape[0]
+    raw_count_closer = 0
+    for i in range(size):
+        # A -> B
+        local_dist = distances[i][size:]
+        raw_count_closer += np.sum(local_dist < local_dist[i])
+        # B -> A
+        local_dist = distances[size+i][:size]
+        raw_count_closer += np.sum(local_dist < local_dist[i])
+    foscttm = raw_count_closer / (2 * size**2)
+    print(f'foscttm: {foscttm}')
+    return foscttm
+
+
+def test_label_dist(
+    integrated_data,
+    datatype,
+    distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
+    verbose=True,
+):
+    """Test average distance by label"""
+    # ASDF: 3+ datasets
+    assert len(integrated_data) == 2, 'Two datasets are supported for ``label_dist``'
+
+    if distance_metric is None:
+        distance_metric = self.distance_function
+    data = np.concatenate(integrated_data, axis=0)
+    labels = np.concatenate(datatype)
+
+    # Will double-count aligned sample
+    average_representation = {}
+    for label in np.unique(labels):
+        average_representation[label] = np.average(data[labels == label, :], axis=0)
+    dist = distance_metric(np.array(list(average_representation.values())))
+    if verbose:
+        print(f'Inter-label distances ({list(average_representation.keys())}):')
+        print(dist)
+    return np.array(list(average_representation.keys())), dist
+
+
+def test_LabelTA(integrated_data, datatype, k=None, return_k=False):
+    """Modified version of UnionCom ``test_LabelTA`` to return acc"""
+    if k is None:
+        # Set to 20% of avg class size if no k provided
+        total_size = min(*[len(d) for d in datatype])
+        num_classes = len(np.unique(np.concatenate(datatype)).flatten())
+        k = int(.2 * total_size / num_classes)
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(integrated_data[1], datatype[1])
+    type1_predict = knn.predict(integrated_data[0])
+    count = 0
+    for label1, label2 in zip(type1_predict, datatype[0]):
+        if label1 == label2:
+            count += 1
+    acc = count / len(datatype[0])
+    print(f"label transfer accuracy: {acc}")
+    if return_k:
+        return acc, k
+    return acc
+
+
+def plot_integrated(data, labels, names=None, legend=True):
+    for i, (dat, lab) in enumerate(zip(data, labels)):
+        ax = plt.gcf().add_subplot(1, 2, i+1, projection='3d')
+        if i == 0:
+            pca = PCA(n_components=3)
+            pca.fit(dat)
+        plot_data = pca.transform(dat)
+        for l in np.unique(np.concatenate(labels)):
+            data_subset = np.transpose(plot_data[lab == l])
+            ax.scatter(*data_subset, s=20., label=l)
+        if i == 1:
+            ax.legend()
+        if names is not None:
+            ax.set_title(names[i])
+        ax.set_xlabel('Component-1')
+        ax.set_ylabel('Component-2')
+        ax.set_zlabel('Component-3')
+
+
+def plot_accuracy(data, labels, names, colors=None):
+    types = [np.unique(type, return_inverse=True)[1] for type in labels]
+    # Metric by Algorithm
+    acc_dict = {
+        'Algorithm': names,
+        'Label Transfer Accuracy': [],
+        'FOSCTTM': [],
+    }
+    for i in range(len(data)):
+        with contextlib.redirect_stdout(None):
+            lta, k = test_LabelTA(data[i], types, return_k=True)
+            acc_dict['Label Transfer Accuracy'].append(lta)
+            acc_dict['FOSCTTM'].append(test_closer(data[i]))
+    acc_dict[f'Label Transfer Accuracy (k={k})'] = acc_dict.pop('Label Transfer Accuracy')
+    df = pd.DataFrame(acc_dict).melt(
+        id_vars='Algorithm',
+        value_vars=list(set(acc_dict.keys()) - set('Algorithm')))
+
+    ax = plt.gca()
+    pl = sns.barplot(
+        data=df,
+        x='variable',
+        y='value',
+        hue='Algorithm',
+        ax=ax,
+        palette=colors)
+    ax.set_xlabel(None)
+    ax.set_ylabel(None)
+    ax.set_title('Cell-Type Prediction Efficacy')
+    plt.legend(ncol=2)
+
+
+def plot_silhouette(data, labels, names, colors=None):
+    types = [np.unique(type, return_inverse=True)[1] for type in labels]
+
+    axs = plt.gcf().subplots(1, 2)
+    for i, ax in enumerate(axs):
+        # Calculate coefficients
+        df = pd.DataFrame(columns=['Algorithm', 'Cell', 'Silhouette Coefficient'])
+        for j in range(len(data)):
+            coefs = silhouette_samples(data[j][i], types[i])
+            for l in np.unique(np.concatenate(labels)):
+                for value in coefs[labels[i] == l]:
+                    df = df.append({
+                        'Algorithm': names[j],
+                        'Cell': l,
+                        'Silhouette Coefficient': value,
+                    }, ignore_index=True)
+
+        # Plot
+        sns.boxplot(
+            data=df,
+            x='Cell',
+            y='Silhouette Coefficient',
+            hue='Algorithm',
+            ax=ax,
+            palette=colors,
+        )
+        ax.set_title('Cell-Type Separability on ' + names[i] + ' Latent Space')
+        if i == 0:
+            ax.legend()
+        else:
+            ax.legend([], [], frameon=False)
+
+
+def plot_auroc(imputed_data, data, modal_names, names=None):
+    axs = plt.gcf().subplots(1, 2)
+    for i, ax in enumerate(axs):
+        feat_auc = []
+        for im in imputed_data:
+            pred = im[i]
+            true = data[i]; true = 1 * (true > np.median(true))
+
+            temp = []
+            for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+                if len(np.unique(tr)) == 2:
+                    temp.append(roc_auc_score(tr, pr))
+            feat_auc.append(temp)
+
+        ax.scatter(*feat_auc)
+        ax.set_title(f'AUROC for {modal_names[i]}')
+        ax.set_xlabel(names[0])
+        ax.set_ylabel(names[1])
+        ax.axis('square')
+
+        # Plot y=x
+        lims = [
+            max(ax.get_xlim()[0], ax.get_ylim()[0]),
+            min(ax.get_xlim()[1], ax.get_ylim()[1])]
+        ax.plot(lims, lims, 'k-', alpha=0.75)
+
+
+def plot_correlation(imputed_data, data, modal_names, names=None):
+    axs = plt.gcf().subplots(1, 2)
+    for i, ax in enumerate(axs):
+        feat_corr = []
+        for im in imputed_data:
+            pred = im[i]
+            true = data[i]
+
+            temp = []
+            for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+                if len(np.unique(tr)) > 1:
+                    temp.append(r_regression(np.reshape(pr, (-1, 1)), tr)[0])
+                    # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
+            feat_corr.append(temp)
+
+        ax.scatter(*feat_corr)
+        ax.set_title(f'Correlation for {modal_names[i]}')
+        ax.set_xlabel(names[0])
+        ax.set_ylabel(names[1])
+        ax.axis('square')
+
+        # Plot y=x
+        lims = [
+            max(ax.get_xlim()[0], ax.get_ylim()[0]),
+            min(ax.get_xlim()[1], ax.get_ylim()[1])]
+        ax.plot(lims, lims, 'k-', alpha=0.75)

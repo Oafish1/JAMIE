@@ -211,7 +211,7 @@ def ensure_list(x):
 
 class SimpleModel(nn.Module):
     """Thin, simple NN model"""
-    def __init__(self, input_dim, output_dim, hidden_dim=10, p=0.6):
+    def __init__(self, input_dim, output_dim, hidden_dim=1, p=0.6):
         super().__init__()
 
         self.fc1 = nn.Linear(input_dim, hidden_dim)
@@ -223,8 +223,21 @@ class SimpleModel(nn.Module):
         return self.fc2(self.dropout(self.fc1(x)))
 
 
+class SingleModel(nn.Module):
+    """Thin, single-layer NN model"""
+    def __init__(self, input_dim, output_dim, p=0.6):
+        super().__init__()
+
+        self.dropout = nn.Dropout(p=p)
+        self.fc1 = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        """Forward pass for the model"""
+        return self.fc1(self.dropout(x))
+
+
 def predict_nn(source, target, epochs=200, batches=10):
-    """Example autoencoder"""
+    """Predict modality using a simple NN"""
     model = SimpleModel(source.shape[1], target.shape[1])
     optimizer = torch.optim.AdamW(model.parameters())
     criterion = nn.MSELoss()

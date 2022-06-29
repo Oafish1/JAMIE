@@ -7,7 +7,7 @@ class edModel(nn.Module):
     Encoder-decoder model for use in dimensionality reduction.
     In the style of UnionCom's ``Model.py``
     """
-    def __init__(self, input_dim, output_dim, preprocessing=None, sigma=None):
+    def __init__(self, input_dim, output_dim, preprocessing=None, preprocessing_inverse=None, sigma=None):
         super().__init__()
 
         self.num_modalities = len(input_dim)
@@ -19,6 +19,11 @@ class edModel(nn.Module):
             self.preprocessing = self.num_modalities * [lambda x: x]
         else:
             self.preprocessing = preprocessing
+        if preprocessing_inverse is None:
+            self.preprocessing_inverse = self.num_modalities * [lambda x: x]
+        else:
+            self.preprocessing_inverse = preprocessing_inverse
+
         self.encoders = []
         for i in range(self.num_modalities):
             self.encoders.append(nn.Sequential(

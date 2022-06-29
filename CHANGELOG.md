@@ -1,6 +1,12 @@
 # 3.8.0 (IN PROGRESS)
+- Add inversion to model preprocessing
 - Add trainable weighting to model aggregation function
+- Additional error handling
+- Additional visualization clarity
+- Reruns
+- Separate plots from `generate_figure` module
 - Update evaluation module with imputed AUROC distribution
+- Visualization reformatting
 
 # 3.7.7
 - Add configurable legend to `generate_figure`
