@@ -11,9 +11,6 @@ class edModel(nn.Module):
         super().__init__()
 
         self.num_modalities = len(input_dim)
-        self.sigma = sigma
-        if self.sigma is None:
-            self.sigma = self.num_modalities * [1 / self.num_modalities]
         # For outputting the model with preprocessing included
         if preprocessing is None:
             self.preprocessing = self.num_modalities * [lambda x: x]
@@ -39,10 +36,21 @@ class edModel(nn.Module):
                 nn.BatchNorm1d(input_dim[i]),
                 nn.LeakyReLU(),
 
+                # AE
                 nn.Linear(input_dim[i], output_dim),
                 nn.BatchNorm1d(output_dim),
             ))
         self.encoders = nn.ModuleList(self.encoders)
+
+        self.fc_mus = []
+        for i in range(self.num_modalities):
+            self.fc_mus.append(nn.Linear(input_dim[i], output_dim))
+        self.fc_mus = nn.ModuleList(self.fc_mus)
+
+        self.fc_vars = []
+        for i in range(self.num_modalities):
+            self.fc_vars.append(nn.Linear(input_dim[i], output_dim))
+        self.fc_vars = nn.ModuleList(self.fc_vars)
 
         self.decoders = []
         for i in range(self.num_modalities):
@@ -64,26 +72,57 @@ class edModel(nn.Module):
             ))
         self.decoders = nn.ModuleList(self.decoders)
 
-    def forward(self, *X, corr=None):
-        """
-        Regular forward method.
+        self.sigma = nn.Parameter(torch.rand(self.num_modalities))
+        self.log_scale = nn.Parameter(torch.zeros(self.num_modalities))
 
-        corr: Correspondence matrix
-        """
-        assert corr is not None, '``corr`` must be provided.'
-        embedded = [self.encoders[i](X[i]) for i in range(self.num_modalities)]
-        combined = [
+    def encode(self, X):
+        return [self.encoders[i](X[i]) for i in range(self.num_modalities)]
+
+    def refactor(self, X):
+        zs = []; mus = []; stds = []
+        for i in range(self.num_modalities):
+            mu = self.fc_mus[i](X[i])
+            log_var = self.fc_vars[i](X[i])
+            std = torch.exp(log_var / 2)
+            q = torch.distributions.Normal(mu, std)
+            zs.append(q.rsample())
+            mus.append(mu)
+            stds.append(std)
+        return zs, mus, stds
+
+    def combine(self, X, corr):
+        return [
             (
-                self.sigma[i] * embedded[i]
+                self.sigma[i] * X[i]
                 + self.sigma[(i + 1) % 2] * torch.mm(
                     corr if i == 0 else torch.t(corr),
-                    embedded[(i + 1) % 2])
+                    X[(i + 1) % 2])
             ) / (
                 self.sigma[i]
                 + self.sigma[(i + 1) % 2] * corr.sum((i + 1) % 2).reshape(-1, 1)
             )
             for i in range(self.num_modalities)
         ]
-        reconstructed = [self.decoders[i](combined[i]) for i in range(self.num_modalities)]
 
-        return embedded, reconstructed
+    def decode(self, X):
+        return [self.decoders[i](X[i]) for i in range(self.num_modalities)]
+
+    def forward(self, *X, corr):
+        """
+        Regular forward method.
+
+        corr: Correspondence matrix
+        """
+        # VAE
+        # zs, mus, stds = self.refactor(self.encode(X))
+        # # combined = combine(embedded, corr)
+        # X_hat = self.decode(zs)
+        #
+        # return zs, X_hat, mus, stds
+
+        # AE
+        embedded = self.encode(X)
+        combined = self.combine(embedded, corr)
+        reconstructed = self.decode(combined)
+
+        return embedded, reconstructed, None, None

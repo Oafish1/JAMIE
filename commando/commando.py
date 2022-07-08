@@ -413,16 +413,14 @@ class ComManDo(uc.UnionCom):
         else:
             pca_list = None
             pca_inv_list = None
-        sigma = torch.rand(2)
         self.model = (
             self.model_class(
                 self.col,
                 self.output_dim,
                 preprocessing=pca_list,
                 preprocessing_inverse=pca_inv_list,
-                sigma=sigma,
             ).to(self.device))
-        optimizer = optim.AdamW([sigma, *self.model.parameters()], lr=self.lr)
+        optimizer = optim.AdamW(self.model.parameters(), lr=self.lr)
 
         def sim_diff_func(a, b):
             if self.dist_method == 'cosine':
@@ -499,13 +497,44 @@ class ComManDo(uc.UnionCom):
                 corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F
 
                 # Run model
-                embedded, reconstructed = self.model(*data, corr=corr)
+                embedded, reconstructed, mus, stds = self.model(*data, corr=corr)
                 timer.log('Run model')
 
                 # Loss bookkeeping
                 losses = []
 
-                # Reconstruction error
+                # # ELBO (VAE)
+                # # kl
+                # kl_list = []
+                # for z, mu, std in zip(embedded, mus, stds):
+                #     p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
+                #     q = torch.distributions.Normal(mu, std)
+                #
+                #     log_qzx = q.log_prob(z)
+                #     log_pz = p.log_prob(z)
+                #
+                #     kl = log_qzx - log_pz
+                #     kl_list.append(kl.sum(-1))
+                #
+                # # gaus
+                # rec_list = []
+                # for dat, rec, ls in zip(data, reconstructed, self.model.log_scale):
+                #     scale = torch.exp(ls)
+                #     dist = torch.distributions.Normal(rec, scale)
+                #
+                #     log_pxz = dist.log_prob(dat)
+                #     rec_list.append(log_pxz.sum(-1))
+                #
+                # # if (epoch % 500) == 0:
+                # #     print(self.model.log_scale)
+                # #     print(torch.exp(log_pxz.max()))
+                # #     print()
+                #
+                # elbo = sum([(kl - rec).mean() for kl, rec in zip(kl_list, rec_list)])
+                # losses.append(elbo)
+                # timer.log('ELBO')
+
+                # MSE Reconstruction error (AE)
                 reconstruction_diff = sum(
                     (reconstructed[i] - data[i]).square().sum() / prod(data[i].shape)
                     for i in range(self.dataset_num)
@@ -538,94 +567,6 @@ class ComManDo(uc.UnionCom):
                 inv_cross_loss = weighted_F_inv_csim.absolute().sum() / F_inv.absolute().sum()
                 losses.append(inv_cross_loss)
                 timer.log('F-inv-cross loss')
-
-                # # Distance loss
-                # _, dist_diff0 = sim_dist_func(data[0], data[0])
-                # _, dist_diff1 = sim_dist_func(data[1], data[1])
-                # dist_loss0 = (cdiff0 - dist_diff0).square().sum() / prod(cdiff0.shape)
-                # dist_loss1 = (cdiff1 - dist_diff1).square().sum() / prod(cdiff1.shape)
-                # dist_loss = (dist_loss0 + dist_loss1) / 2
-                # losses.append(dist_loss)
-                # timer.log('Distance Loss')
-
-                # # Distance F loss
-                # _, dist_diff0 = sim_dist_func(data[0], data[0])
-                # _, dist_diff1 = sim_dist_func(data[1], data[1])
-                # dist_loss0 = (
-                #     torch.mm(torch.linalg.pinv(F), cdiff0)
-                #     - torch.mm(torch.linalg.pinv(F), dist_diff0)
-                # ).square().sum() / prod(cdiff0.shape)
-                # dist_loss1 = (
-                #     torch.mm(cdiff1, torch.t(F)) - torch.mm(dist_diff1, torch.t(F))
-                # ).square().sum() / prod(cdiff1.shape)
-                # dist_loss = (dist_loss0 + dist_loss1) / 2
-                # losses.append(dist_loss)
-                # timer.log('Distance F Loss')
-
-                # # Com loss
-                # com_diff = cdiff0 - torch.mm(F, torch.mm(cdiff1, torch.t(F)))
-                # com_loss = (com_diff / (1+cdiff0)).square().sum()
-                # losses.append(com_loss)
-                # timer.log('Com Loss')
-
-                # # Repulsion loss (Promising, almost equiv to inv-cross)
-                # repulsion_loss = (
-                #     # (csim.sum() + csim0.sum() + csim1.sum()) /
-                #     # (prod(csim.shape) + prod(csim0.shape) + prod(csim1.shape))
-                #     (csim0.sum() + csim1.sum()) / (prod(csim0.shape) + prod(csim1.shape))
-                # )
-                # losses.append(repulsion_loss)
-                # timer.log('Repulsion loss')
-
-                # # Efficiency loss (Promising)
-                # total_correlation = 0
-                # for i in range(self.dataset_num):
-                #     adjusted = embedded[i] - embedded[i].mean(axis=0, keepdim=True)
-                #     mat = torch.mm(torch.t(adjusted), adjusted)
-                #     for j in range(self.output_dim):
-                #         for k in range(j+1, self.output_dim):
-                #             correlation = mat[j, k] / (mat[j, j] * mat[k, k]).sqrt()
-                #             total_correlation += correlation.square()
-                # efficiency_loss = total_correlation / (self.output_dim**2 - self.output_dim)
-                # losses.append(efficiency_loss)
-                # timer.log('Collapse loss')
-
-                # # Magnitude loss
-                # max0 = embedded[0].abs().mean(axis=1).max()
-                # max1 = embedded[1].abs().mean(axis=1).max()
-                # mag_loss = 1e-1 * (max0 + max1)
-                # losses.append(mag_loss)
-                # timer.log('Magnitude loss')
-
-                # # Zero loss
-                # min0 = 1 / embedded[0].abs()
-                # min1 = 1 / embedded[1].abs()
-                # zero_loss = (min0.sum() + min1.sum()) / (2 * prod(embedded[0].shape))
-                # losses.append(zero_loss)
-                # timer.log('Collapse loss')
-
-                # # Axis stick loss
-                # min0 = 1 / embedded[0].mean(axis=1).abs()
-                # min1 = 1 / embedded[1].mean(axis=1).abs()
-                # as_loss = 1e-4 * (min0.sum() + min1.sum())
-                # losses.append(as_loss)
-                # timer.log('Collapse loss')
-
-                # # Collapse loss
-                # min0 = 1 / embedded[0].abs().mean(axis=1).min()
-                # min1 = 1 / embedded[1].abs().mean(axis=1).min()
-                # collapse_loss = 1e-1 * (min0 + min1)
-                # losses.append(collapse_loss)
-                # timer.log('Collapse loss')
-
-                # # F loss
-                # F1 = torch.mm(torch.t(F), torch.mm(cdiff0, F)) - cdiff1
-                # F1 = F1.square().sum()
-                # F2 = torch.mm(F, torch.mm(cdiff1, torch.t(F))) - cdiff0
-                # F2 = F2.square().sum()
-                # F_loss = 3e-3 * (F1 + F2)
-                # losses.append(F_loss)
-                # timer.log('F loss')
 
                 # Record loss
                 if self.loss_weights is not None:
@@ -671,7 +612,7 @@ class ComManDo(uc.UnionCom):
         # corr_F = knn_dist(corr_F) if self.perfect_alignment else knn_sim(corr_F)
         corr_F /= corr_F.absolute().max()
         corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
-        integrated_data, _ = self.model(*self.dataset, corr=corr)
+        integrated_data = self.model(*self.dataset, corr=corr)[0]
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")

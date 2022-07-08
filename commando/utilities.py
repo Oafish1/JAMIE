@@ -236,7 +236,7 @@ class SingleModel(nn.Module):
         return self.fc1(self.dropout(x))
 
 
-def predict_nn(source, target, epochs=200, batches=10):
+def predict_nn(source, target, val=None, epochs=200, batches=10):
     """Predict modality using a simple NN"""
     model = SimpleModel(source.shape[1], target.shape[1])
     optimizer = torch.optim.AdamW(model.parameters())
@@ -251,6 +251,8 @@ def predict_nn(source, target, epochs=200, batches=10):
             loss = criterion(logits, target[idx])
             loss.backward()
             optimizer.step()
+    if val is not None:
+        return model(val).detach().cpu().numpy()
     return model(source).detach().cpu().numpy()
 
 

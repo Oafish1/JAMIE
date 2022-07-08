@@ -1,4 +1,5 @@
 # 3.8.0 (IN PROGRESS)
+- Add VAE functionality
 - Add inversion to model preprocessing
 - Add trainable weighting to model aggregation function
 - Additional error handling

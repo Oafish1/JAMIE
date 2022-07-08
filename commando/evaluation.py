@@ -859,34 +859,32 @@ def plot_accuracy(data, labels, names, colors=None):
     # Metric by Algorithm
     acc_dict = {
         'Algorithm': names,
-        'Label Transfer Accuracy': [],
+        'LTA': [],
         'FOSCTTM': [],
     }
     for i in range(len(data)):
         with contextlib.redirect_stdout(None):
             lta, k = test_LabelTA(data[i], types, return_k=True)
-            acc_dict['Label Transfer Accuracy'].append(lta)
+            acc_dict['LTA'].append(lta)
             acc_dict['FOSCTTM'].append(test_closer(data[i]))
-    acc_dict[f'Label Transfer Accuracy (k={k})'] = acc_dict.pop('Label Transfer Accuracy')
+    acc_dict[f'LTA (k={k})'] = acc_dict.pop('LTA')
     df = pd.DataFrame(acc_dict).melt(
         id_vars='Algorithm',
         value_vars=list(set(acc_dict.keys()) - set('Algorithm')))
 
-    ax = plt.gca()
-    pl = sns.barplot(
-        data=df,
-        x='variable',
-        y='value',
-        hue='Algorithm',
-        ax=ax,
-        palette=colors)
-    ax.set_xlabel(None)
-    ax.set_ylabel(None)
-    ax.set_title('Cell-Type Prediction Efficacy')
-    plt.legend(ncol=2)
+    for i, v in enumerate(np.unique(df['variable'])):
+        ax = plt.gcf().add_subplot(2, 1, i+1)
+        pl = sns.barplot(
+            data=df[df['variable'] == v],
+            x='Algorithm',
+            y='value',
+            ax=ax,
+            palette=colors)
+        ax.set_ylabel(v)
+        ax.set_xlabel(None)
 
 
-def plot_silhouette(data, labels, names, colors=None):
+def plot_silhouette(data, labels, names, modal_names, colors=None):
     types = [np.unique(type, return_inverse=True)[1] for type in labels]
 
     axs = plt.gcf().subplots(1, 2)
@@ -912,7 +910,7 @@ def plot_silhouette(data, labels, names, colors=None):
             ax=ax,
             palette=colors,
         )
-        ax.set_title('Cell-Type Separability on ' + names[i] + ' Latent Space')
+        ax.set_title(modal_names[i])
         if i == 0:
             ax.legend()
         else:
