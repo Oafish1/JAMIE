@@ -31,3 +31,8 @@
 [Paper](https://www.nature.com/articles/s41586-021-03813-8#data-availability)
 
 [Source](https://github.com/AllenInstitute/patchseq_human_L23)
+
+### BrainChromatin
+[Paper](https://doi.org/10.1016/j.cell.2021.07.039)
+
+[Source](https://github.com/GreenleafLab/brainchromatin)

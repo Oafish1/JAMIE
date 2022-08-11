@@ -1,9 +1,12 @@
-# 3.8.0 (IN PROGRESS)
+# 3.8.0
+- Add MMD-MA
 - Add VAE functionality
+- Add feature distribution previews
 - Add inversion to model preprocessing
 - Add trainable weighting to model aggregation function
 - Additional error handling
 - Additional visualization clarity
+- Include `BrainChromatin` dataset
 - Reruns
 - Separate plots from `generate_figure` module
 - Update evaluation module with imputed AUROC distribution

@@ -884,6 +884,41 @@ def plot_accuracy(data, labels, names, colors=None):
         ax.set_xlabel(None)
 
 
+def plot_accuracy_table(data, labels, names, exclude=[]):
+    types = [np.unique(type, return_inverse=True)[1] for type in labels]
+    # Metric by Algorithm
+    acc_dict = {
+        'Algorithm': [names[i] for i in range(len(data)) if i not in exclude],
+        'LTA': [],
+        'FOSCTTM': [],
+    }
+    for i in range(len(data)):
+        if i in exclude:
+            continue
+        with contextlib.redirect_stdout(None):
+            lta, k = test_LabelTA(data[i], types, return_k=True)
+            acc_dict['LTA'].append(lta)
+            acc_dict['FOSCTTM'].append(test_closer(data[i]))
+    acc_dict[f'LTA (k={k})'] = acc_dict.pop('LTA')
+    df = pd.DataFrame(acc_dict)
+    df.index = df['Algorithm']
+    df = df[set(df.columns) - {'Algorithm'}]
+    df = df.transpose()
+    raw_values = df.to_numpy().copy()
+    df = df.transpose()
+    df['FOSCTTM'] *= -1
+    df = df.transpose()
+    df = df.sub(df.min(axis=1), axis=0)
+    df = df.div(df.max(axis=1), axis=0)
+    df = df * .4
+    df = df + .3
+
+    ax = plt.gcf().add_subplot(1, 1, 1)
+    pl = sns.heatmap(df, annot=raw_values, cbar=False, vmin=0, vmax=1,
+                     cmap=sns.diverging_palette(10, 133, as_cmap=True))
+    ax.set_xlabel(None)
+
+
 def plot_silhouette(data, labels, names, modal_names, colors=None):
     types = [np.unique(type, return_inverse=True)[1] for type in labels]
 
@@ -917,56 +952,133 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
             ax.legend([], [], frameon=False)
 
 
+def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
+    feat_auc = []
+    for im in imputed_data:
+        pred = im[i]
+        true = data[i]; true = 1 * (true > np.median(true))
+
+        temp = []
+        for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+            if len(np.unique(tr)) == 2:
+                temp.append(roc_auc_score(tr, pr))
+        feat_auc.append(temp)
+
+    ax.scatter(*feat_auc)
+    ax.set_title(f'AUROC for {modal_names[i]}')
+    ax.set_xlabel(names[0])
+    ax.set_ylabel(names[1])
+    ax.axis('square')
+
+    # Plot y=x
+    lims = [
+        max(ax.get_xlim()[0], ax.get_ylim()[0]),
+        min(ax.get_xlim()[1], ax.get_ylim()[1])]
+    ax.plot(lims, lims, 'k-', alpha=0.75)
+
+    # Text output
+    gre = sum(np.greater(feat_auc[1], feat_auc[0]))
+    ax.text(.2, .8, gre, transform=ax.transAxes)
+    les = sum(np.greater(feat_auc[0], feat_auc[1]))
+    ax.text(.8, .2, les, transform=ax.transAxes)
+    n = len(feat_auc[0])
+    # Null hypothesis - equal methods (two-tailed)
+    # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
+    p_value = sum(2**(math.log(math.comb(n, i), 2) - n) for i in range(n+1) if i >= gre)
+    if p_value > .5:
+        p_value = 1 - p_value
+    p_value *= 2
+    ax.text(.6, .1, f'p-value: {p_value:.2E}', transform=ax.transAxes)
+
+
+def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
+    feat_corr = []
+    for im in imputed_data:
+        pred = im[i]
+        true = data[i]
+
+        temp = []
+        for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+            if len(np.unique(tr)) > 1:
+                temp.append(r_regression(np.reshape(pr, (-1, 1)), tr)[0])
+                # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
+        feat_corr.append(temp)
+
+    ax.scatter(*feat_corr)
+    ax.set_title(f'Correlation for {modal_names[i]}')
+    ax.set_xlabel(names[0])
+    ax.set_ylabel(names[1])
+    ax.axis('square')
+
+    # Plot y=x
+    lims = [
+        max(ax.get_xlim()[0], ax.get_ylim()[0]),
+        min(ax.get_xlim()[1], ax.get_ylim()[1])]
+    ax.plot(lims, lims, 'k-', alpha=0.75)
+
+    # Text output
+    # would use transform=ax.transAxes, but warps
+    gre = sum(np.greater(feat_corr[1], feat_corr[0]))
+    ax.text(.2, .8, gre, transform=ax.transAxes)
+    les = sum(np.greater(feat_corr[0], feat_corr[1]))
+    ax.text(.8, .2, les, transform=ax.transAxes)
+    n = len(feat_corr[0])
+    # Null hypothesis - equal methods (two-tailed)
+    # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
+    p_value = sum(2**(math.log(math.comb(n, i), 2) - n) for i in range(n+1) if i >= gre)
+    if p_value > .5:
+        p_value = 1 - p_value
+    p_value *= 2
+    ax.text(.6, .1, f'p-value: {p_value:.2E}', transform=ax.transAxes)
+
+
 def plot_auroc(imputed_data, data, modal_names, names=None):
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
-        feat_auc = []
-        for im in imputed_data:
-            pred = im[i]
-            true = data[i]; true = 1 * (true > np.median(true))
-
-            temp = []
-            for pr, tr in zip(np.transpose(pred), np.transpose(true)):
-                if len(np.unique(tr)) == 2:
-                    temp.append(roc_auc_score(tr, pr))
-            feat_auc.append(temp)
-
-        ax.scatter(*feat_auc)
-        ax.set_title(f'AUROC for {modal_names[i]}')
-        ax.set_xlabel(names[0])
-        ax.set_ylabel(names[1])
-        ax.axis('square')
-
-        # Plot y=x
-        lims = [
-            max(ax.get_xlim()[0], ax.get_ylim()[0]),
-            min(ax.get_xlim()[1], ax.get_ylim()[1])]
-        ax.plot(lims, lims, 'k-', alpha=0.75)
+        _plot_auroc(imputed_data, data, modal_names, ax, i=i, names=names)
 
 
 def plot_correlation(imputed_data, data, modal_names, names=None):
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
-        feat_corr = []
-        for im in imputed_data:
-            pred = im[i]
-            true = data[i]
+        _plot_correlation(imputed_data, data, modal_names, ax, i=i, names=names)
 
-            temp = []
-            for pr, tr in zip(np.transpose(pred), np.transpose(true)):
-                if len(np.unique(tr)) > 1:
-                    temp.append(r_regression(np.reshape(pr, (-1, 1)), tr)[0])
-                    # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
-            feat_corr.append(temp)
 
-        ax.scatter(*feat_corr)
-        ax.set_title(f'Correlation for {modal_names[i]}')
-        ax.set_xlabel(names[0])
-        ax.set_ylabel(names[1])
-        ax.axis('square')
+def plot_auroc_correlation(imputed_data, data, modal_names, index=0, names=None):
+    axs = plt.gcf().subplots(1, 2)
+    _plot_auroc(imputed_data, data, modal_names, axs[0], i=index, names=names)
+    _plot_correlation(imputed_data, data, modal_names, axs[1], i=index, names=names)
 
-        # Plot y=x
-        lims = [
-            max(ax.get_xlim()[0], ax.get_ylim()[0]),
-            min(ax.get_xlim()[1], ax.get_ylim()[1])]
-        ax.plot(lims, lims, 'k-', alpha=0.75)
+
+def plot_distribution(datasets, labels, modal_names, feature_limit=5, fnames=None):
+    if feature_limit is not None:
+        datasets = [data[:, :feature_limit] for data in datasets]
+        for i in range(len(fnames)):
+            if fnames[i] is not None:
+                fnames[i] = fnames[i][:feature_limit]
+
+    axs = plt.gcf().subplots(1, 2)
+    for i, ax in enumerate(axs):
+        df = pd.DataFrame(datasets[i])
+        if fnames[i] is not None:
+            df.columns = fnames[i]
+            df.columns.name = None
+        df['_type'] = labels[i]
+        df['_sample'] = df.index
+
+        id_vars = ['_sample', '_type']
+        df = df.melt(
+            id_vars=id_vars,
+            value_vars=list(set(df.keys()) - set(id_vars)))
+        df = df.rename(columns={'variable': 'Variable', 'value': 'Value', '_type': 'Type'})
+
+        # Plot
+        sns.boxplot(
+            data=df,
+            x='Variable',
+            y='Value',
+            hue='Type',
+            ax=ax,
+        )
+        ax.set_title(modal_names[i])
+        ax.legend([], [], frameon=False)
