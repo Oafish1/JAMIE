@@ -1,6 +1,7 @@
 import contextlib
 import math
 
+from matplotlib.collections import PatchCollection
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -910,13 +911,41 @@ def plot_accuracy_table(data, labels, names, exclude=[]):
     df = df.transpose()
     df = df.sub(df.min(axis=1), axis=0)
     df = df.div(df.max(axis=1), axis=0)
-    df = df * .4
-    df = df + .3
 
     ax = plt.gcf().add_subplot(1, 1, 1)
-    pl = sns.heatmap(df, annot=raw_values, cbar=False, vmin=0, vmax=1,
-                     cmap=sns.diverging_palette(10, 133, as_cmap=True))
-    ax.set_xlabel(None)
+
+    # Heatmap
+    # df = df * .4
+    # df = df + .3
+    # pl = sns.heatmap(df, annot=raw_values, cbar=False, vmin=0, vmax=1,
+    #                  cmap=sns.diverging_palette(10, 133, as_cmap=True))
+    # ax.set_xlabel(None)
+
+    # Corrplot
+    # https://stackoverflow.com/questions/59381273/heatmap-with-circles-indicating-size-of-population
+    df = df * .6 + .4
+    df = df / 2
+    x, y = np.meshgrid(np.arange(df.shape[1]), np.arange(df.shape[0]))
+    circles = [
+        plt.Circle((i, j), radius=r)
+        for i, j, r in zip(x.flat, y.flat, df.to_numpy().flatten())
+    ]
+    col = PatchCollection(circles, facecolor='lightsteelblue')
+    for i, j, r in zip(x.flat, y.flat, raw_values.flatten()):
+        plt.text(i, j, f'{r:.2f}', color='black', ha='center', va='center')
+    ax.add_collection(col)
+    ax.set(
+        xticks=np.arange(df.shape[1]),
+        yticks=np.arange(df.shape[0]),
+        xticklabels=df.columns,
+        yticklabels=df.index,
+    )
+    ax.set_xticks(np.arange(df.shape[1]+1)-0.5, minor=True)
+    ax.set_yticks(np.arange(df.shape[0]+1)-0.5, minor=True)
+    ax.axis('square')
+    ax.set_ylim(-.5, df.shape[0]-.5)
+    ax.set_xlim(-.5, df.shape[1]-.5)
+    ax.grid(which='minor')
 
 
 def plot_silhouette(data, labels, names, modal_names, colors=None):
@@ -964,7 +993,7 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
                 temp.append(roc_auc_score(tr, pr))
         feat_auc.append(temp)
 
-    ax.scatter(*feat_auc)
+    ax.scatter(*feat_auc, facecolor='none', edgecolor='black')
     ax.set_title(f'AUROC for {modal_names[i]}')
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
@@ -978,9 +1007,9 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
 
     # Text output
     gre = sum(np.greater(feat_auc[1], feat_auc[0]))
-    ax.text(.2, .8, gre, transform=ax.transAxes)
+    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes)
     les = sum(np.greater(feat_auc[0], feat_auc[1]))
-    ax.text(.8, .2, les, transform=ax.transAxes)
+    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes)
     n = len(feat_auc[0])
     # Null hypothesis - equal methods (two-tailed)
     # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
@@ -988,7 +1017,7 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
     if p_value > .5:
         p_value = 1 - p_value
     p_value *= 2
-    ax.text(.6, .1, f'p-value: {p_value:.2E}', transform=ax.transAxes)
+    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes)
 
 
 def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
@@ -1004,7 +1033,7 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
                 # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
         feat_corr.append(temp)
 
-    ax.scatter(*feat_corr)
+    ax.scatter(*feat_corr, facecolor='none', edgecolor='black')
     ax.set_title(f'Correlation for {modal_names[i]}')
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
@@ -1019,9 +1048,9 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
     # Text output
     # would use transform=ax.transAxes, but warps
     gre = sum(np.greater(feat_corr[1], feat_corr[0]))
-    ax.text(.2, .8, gre, transform=ax.transAxes)
+    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes)
     les = sum(np.greater(feat_corr[0], feat_corr[1]))
-    ax.text(.8, .2, les, transform=ax.transAxes)
+    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes)
     n = len(feat_corr[0])
     # Null hypothesis - equal methods (two-tailed)
     # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
@@ -1029,7 +1058,7 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
     if p_value > .5:
         p_value = 1 - p_value
     p_value *= 2
-    ax.text(.6, .1, f'p-value: {p_value:.2E}', transform=ax.transAxes)
+    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes)
 
 
 def plot_auroc(imputed_data, data, modal_names, names=None):
@@ -1050,7 +1079,7 @@ def plot_auroc_correlation(imputed_data, data, modal_names, index=0, names=None)
     _plot_correlation(imputed_data, data, modal_names, axs[1], i=index, names=names)
 
 
-def plot_distribution(datasets, labels, modal_names, feature_limit=5, fnames=None):
+def plot_distribution(datasets, labels, names, feature_limit=3, supert=None, fnames=None):
     if feature_limit is not None:
         datasets = [data[:, :feature_limit] for data in datasets]
         for i in range(len(fnames)):
@@ -1080,5 +1109,41 @@ def plot_distribution(datasets, labels, modal_names, feature_limit=5, fnames=Non
             hue='Type',
             ax=ax,
         )
-        ax.set_title(modal_names[i])
+        ax.set_ylabel(names[i])
+        ax.set_xlabel('Feature')
         ax.legend([], [], frameon=False)
+    plt.gcf().suptitle(supert)
+
+
+def plot_distribution_similarity(datasets, labels, title=None, max_features=100):
+    from scipy.spatial import distance
+    from scipy import stats
+
+    assert datasets[0].shape[1] == datasets[1].shape[1]
+
+    total_features = min(datasets[0].shape[1], max_features)
+    ax = plt.gcf().add_subplot(1, 1, 1)
+    distances = {}
+    for l in np.unique(labels):
+        distances[l] = []
+        for f in range(total_features):
+            data = [datasets[j][labels[j] == l, f] for j in range(len(datasets))]
+            X = np.linspace(np.min(data), np.max(data), 1000)
+            data = [np.histogram(data[j], bins='auto') for j in range(len(datasets))]
+            data = [stats.rv_histogram(data[j]) for j in range(len(datasets))]
+            data = [[data[j].pdf(x) for x in X] for j in range(len(datasets))]
+            dist = distance.jensenshannon(*data)
+            distances[l].append(1 - dist)
+    for l, v in distances.items():
+        ax.plot(range(total_features), v, label=l)
+
+    ax.set_xlabel('Features')
+    plt.tick_params(
+        axis='x',
+        which='both',
+        bottom=False,
+        top=False,
+        labelbottom=False)
+    ax.set_ylabel('Distribution Similarity')
+    ax.set_title(title)
+    ax.legend()

@@ -1,3 +1,8 @@
+# 3.8.1
+- Distribution similarity measure
+- Evaluation style changes
+- Reruns
+
 # 3.8.0
 - Add MMD-MA
 - Add VAE functionality
