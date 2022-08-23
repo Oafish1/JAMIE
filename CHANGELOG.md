@@ -1,3 +1,8 @@
+# 3.8.2
+- Fixed a bug concerning min-max normalization in the `compute_distances` function
+- Implement SHAP and add visualizations
+- Reruns
+
 # 3.8.1
 - Distribution similarity measure
 - Evaluation style changes

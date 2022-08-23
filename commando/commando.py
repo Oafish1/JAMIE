@@ -607,10 +607,8 @@ class ComManDo(uc.UnionCom):
                 break
 
         self.model.eval()
-        corr_P = self.P / self.P.sum()
-        corr_F = self.F
-        # corr_F = knn_dist(corr_F) if self.perfect_alignment else knn_sim(corr_F)
-        corr_F /= corr_F.absolute().max()
+        corr_P = self.P / self.P.absolute().max()
+        corr_F = self.F / self.F.absolute().max()
         corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
         integrated_data = self.model(*self.dataset, corr=corr)[0]
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
@@ -639,10 +637,10 @@ class ComManDo(uc.UnionCom):
         print('Shape of Raw data')
         for i in range(self.dataset_num):
             print('Dataset {}:'.format(i), np.shape(self.dataset[i]))
-            self.dataset[i] = (
-                (self.dataset[i] - np.min(self.dataset[i]))
-                / (np.max(self.dataset[i]) - np.min(self.dataset[i]))
-            )
+            # self.dataset[i] = (
+            #     (self.dataset[i] - np.min(self.dataset[i]))
+            #     / (np.max(self.dataset[i]) - np.min(self.dataset[i]))
+            # )
 
             if self.distance_mode == 'geodesic':
                 def distance_function(df):

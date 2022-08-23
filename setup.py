@@ -35,10 +35,12 @@ setup(
             'pytest-cov',
         ],
         'notebooks': [
+            'ipywidgets',
             'jupyterlab',
             'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD',
             'pandas',
             'seaborn',
+            'shap',
         ],
     },
 	tests_require=['pytest'],
