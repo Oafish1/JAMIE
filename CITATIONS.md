@@ -36,3 +36,8 @@
 [Paper](https://doi.org/10.1016/j.cell.2021.07.039)
 
 [Source](https://github.com/GreenleafLab/brainchromatin)
+
+### scDART
+[Paper](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02706-x)
+
+[Source](https://github.com/PeterZZQ/scDART)

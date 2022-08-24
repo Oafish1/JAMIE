@@ -378,7 +378,7 @@ class ComManDo(uc.UnionCom):
             else:
                 self.P = np.zeros((self.row[0], self.row[1]))
 
-        if (self.P - np.eye(self.row[0])).sum() == 0:
+        if self.P.shape[0] == self.P.shape[1] and np.abs(self.P - np.eye(self.row[0])).sum() == 0:
             self.perfect_alignment = True
         else:
             self.perfect_alignment = False

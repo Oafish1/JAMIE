@@ -948,6 +948,43 @@ def plot_accuracy_table(data, labels, names, exclude=[]):
     ax.grid(which='minor')
 
 
+def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
+    types = [np.unique(type, return_inverse=True)[1] for type in labels]
+    # Metric by Algorithm
+    acc_dict = {
+        'Algorithm': [names[i] for i in range(len(data)) if i not in exclude],
+        'LTA': [],
+        'FOSCTTM': [],
+    }
+    for i in range(len(data)):
+        if i in exclude:
+            continue
+        with contextlib.redirect_stdout(None):
+            lta, k = test_LabelTA(data[i], types, return_k=True)
+            acc_dict['LTA'].append(lta)
+            acc_dict['FOSCTTM'].append(test_closer(data[i]))
+    acc_dict[f'LTA (k={k})'] = acc_dict.pop('LTA')
+    df = pd.DataFrame(acc_dict)
+    df.index = df['Algorithm']
+    df = df[set(df.columns) - {'Algorithm'}]
+    df = df.transpose()
+
+    ax = plt.gcf().add_subplot(1, 1, 1)
+    # Plot
+    sns.scatterplot(
+        data=df.transpose(),
+        x=df.index[0],
+        y=df.index[1],
+        hue='Algorithm',
+        ax=ax,
+        palette=[c for i, c in enumerate(colors) if i not in exclude],
+        s=200,
+        alpha=1)
+    ax.set_xlabel(df.index[0])
+    ax.set_ylabel(df.index[1])
+    ax.invert_xaxis()
+
+
 def plot_silhouette(data, labels, names, modal_names, colors=None):
     types = [np.unique(type, return_inverse=True)[1] for type in labels]
 
@@ -1115,7 +1152,7 @@ def plot_distribution(datasets, labels, names, feature_limit=3, supert=None, fna
     plt.gcf().suptitle(supert)
 
 
-def plot_distribution_similarity(datasets, labels, title=None, max_features=100):
+def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True):
     from scipy.spatial import distance
     from scipy import stats
 
@@ -1127,15 +1164,28 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100)
     for l in np.unique(labels):
         distances[l] = []
         for f in range(total_features):
+            data_all = [datasets[j][:, f] for j in range(len(datasets))]
             data = [datasets[j][labels[j] == l, f] for j in range(len(datasets))]
+            if relative and (np.max(data_all[0]) - np.min(data_all[0])) != 0 and (np.max(data_all[1]) - np.min(data_all[1])) != 0:
+                data = [(d - np.min(data_all[i])) / (np.max(data_all[i]) - np.min(data_all[i])) for i, d in enumerate(data)]
             X = np.linspace(np.min(data), np.max(data), 1000)
             data = [np.histogram(data[j], bins='auto') for j in range(len(datasets))]
             data = [stats.rv_histogram(data[j]) for j in range(len(datasets))]
             data = [[data[j].pdf(x) for x in X] for j in range(len(datasets))]
             dist = distance.jensenshannon(*data)
             distances[l].append(1 - dist)
+
+    # Sort by performance
+    total = 0
     for l, v in distances.items():
-        ax.plot(range(total_features), v, label=l)
+        total += np.array(v)
+    total /= len(distances.keys())
+    sort_idx = np.argsort(total)[::-1]
+
+    # Plot
+    for l, v in distances.items():
+        ax.plot(range(total_features), np.array(v)[sort_idx], label=l)
+    ax.plot(range(total_features), total[sort_idx], label='Cumulative', linewidth=6, color='black')
 
     ax.set_xlabel('Features')
     plt.tick_params(
