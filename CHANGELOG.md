@@ -1,4 +1,5 @@
 # 3.8.3
+- Add more SHAP visualizations
 - Add scDART
 - Fix bug for non-aligned datasets in `commando` module
 - Stylistic changes in `evaluation`
