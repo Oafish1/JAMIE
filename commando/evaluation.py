@@ -973,16 +973,25 @@ def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
     # Plot
     sns.scatterplot(
         data=df.transpose(),
-        x=df.index[0],
-        y=df.index[1],
+        x='FOSCTTM',
+        y=f'LTA (k={k})',
         hue='Algorithm',
+        style='Algorithm',
         ax=ax,
         palette=[c for i, c in enumerate(colors) if i not in exclude],
+        edgecolor='black',
         s=200,
         alpha=1)
-    ax.set_xlabel(df.index[0])
-    ax.set_ylabel(df.index[1])
-    ax.invert_xaxis()
+    ax.set_xlabel('FOSCTTM')
+    ax.set_ylabel(f'LTA (k={k})')
+    # ax.invert_xaxis()
+
+    # Add text
+    for i, row in df.transpose().iterrows():
+        ax.annotate(i.replace('\n', ' '), (row['FOSCTTM']-.005, row[f'LTA (k={k})']+.005), ha='left')
+    ax.set_ylim([min(df.transpose()[f'LTA (k={k})']) - .01, max(df.transpose()[f'LTA (k={k})']) + .02])
+    ax.set_xlim([max(df.transpose()['FOSCTTM']) + .01, min(df.transpose()['FOSCTTM']) - .02])
+    # plt.legend([])
 
 
 def plot_silhouette(data, labels, names, modal_names, colors=None):
@@ -991,21 +1000,21 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
         # Calculate coefficients
-        df = pd.DataFrame(columns=['Algorithm', 'Cell', 'Silhouette Coefficient'])
+        df = pd.DataFrame(columns=['Algorithm', 'Cell Type', 'Silhouette Coefficient'])
         for j in range(len(data)):
             coefs = silhouette_samples(data[j][i], types[i])
             for l in np.unique(np.concatenate(labels)):
                 for value in coefs[labels[i] == l]:
                     df = df.append({
                         'Algorithm': names[j],
-                        'Cell': l,
+                        'Cell Type': l,
                         'Silhouette Coefficient': value,
                     }, ignore_index=True)
 
         # Plot
         sns.boxplot(
             data=df,
-            x='Cell',
+            x='Cell Type',
             y='Silhouette Coefficient',
             hue='Algorithm',
             ax=ax,
@@ -1116,7 +1125,8 @@ def plot_auroc_correlation(imputed_data, data, modal_names, index=0, names=None)
     _plot_correlation(imputed_data, data, modal_names, axs[1], i=index, names=names)
 
 
-def plot_distribution(datasets, labels, names, feature_limit=3, supert=None, fnames=None):
+def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=None):
+    names = ['Measured', 'Imputed']
     if feature_limit is not None:
         datasets = [data[:, :feature_limit] for data in datasets]
         for i in range(len(fnames)):
@@ -1128,6 +1138,9 @@ def plot_distribution(datasets, labels, names, feature_limit=3, supert=None, fna
         df = pd.DataFrame(datasets[i])
         if fnames[i] is not None:
             df.columns = fnames[i]
+            df.columns.name = None
+        else:
+            df.columns = [f'Feature {i}' for i in range(len(df.columns))]
             df.columns.name = None
         df['_type'] = labels[i]
         df['_sample'] = df.index
@@ -1146,10 +1159,10 @@ def plot_distribution(datasets, labels, names, feature_limit=3, supert=None, fna
             hue='Type',
             ax=ax,
         )
-        ax.set_ylabel(names[i])
-        ax.set_xlabel('Feature')
+        ax.set_ylabel(f'{supert} ({names[i]})')
+        ax.set_xlabel(None)
         ax.legend([], [], frameon=False)
-    plt.gcf().suptitle(supert)
+    # plt.gcf().suptitle(supert)
 
 
 def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True):
@@ -1184,16 +1197,23 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100,
 
     # Plot
     for l, v in distances.items():
-        ax.plot(range(total_features), np.array(v)[sort_idx], label=l)
-    ax.plot(range(total_features), total[sort_idx], label='Cumulative', linewidth=6, color='black')
+        # ax.plot(range(total_features), np.array(v)[sort_idx], label=l)
+        y = np.array([sum(np.array(v) <= i) / len(v) for i in np.array(v)])
+        sort_idx = np.argsort(y)[::-1]
+        ax.plot(np.array(v)[sort_idx], y[sort_idx], label=l)
+    # ax.plot(range(total_features), total[sort_idx], label='Cumulative', linewidth=6, color='black')
+    y = np.array([sum(total <= i) / len(total) for i in total])
+    sort_idx = np.argsort(y)[::-1]
+    ax.plot(total[sort_idx], y[sort_idx], label='Cumulative', linewidth=6, color='black')
 
-    ax.set_xlabel('Features')
-    plt.tick_params(
-        axis='x',
-        which='both',
-        bottom=False,
-        top=False,
-        labelbottom=False)
-    ax.set_ylabel('Distribution Similarity')
+    ax.set_xlabel('Distribution Similarity')
+    # plt.tick_params(
+    #     axis='x',
+    #     which='both',
+    #     bottom=False,
+    #     top=False,
+    #     labelbottom=False)
+    ax.set_ylim([0, 1])
+    ax.set_ylabel('CDF')
     ax.set_title(title)
     ax.legend()

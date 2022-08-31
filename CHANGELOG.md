@@ -1,6 +1,7 @@
 # 3.8.3
 - Add scDART
 - Fix bug for non-aligned datasets in `commando` module
+- Stylistic changes in `evaluation`
 - Various visualizations in `evaluation` module
 
 # 3.8.2
