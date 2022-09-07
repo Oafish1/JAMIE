@@ -1198,22 +1198,26 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100,
     # Plot
     for l, v in distances.items():
         # ax.plot(range(total_features), np.array(v)[sort_idx], label=l)
-        y = np.array([sum(np.array(v) <= i) / len(v) for i in np.array(v)])
-        sort_idx = np.argsort(y)[::-1]
-        ax.plot(np.array(v)[sort_idx], y[sort_idx], label=l)
+        # pct = np.array([sum(np.array(v) <= i) / len(v) for i in np.array(v)])
+        pct = np.linspace(0, 1, len(v))
+        sort_idx = np.argsort(v)
+        ax.plot(pct, np.array(v)[sort_idx], label=l)
     # ax.plot(range(total_features), total[sort_idx], label='Cumulative', linewidth=6, color='black')
-    y = np.array([sum(total <= i) / len(total) for i in total])
-    sort_idx = np.argsort(y)[::-1]
-    ax.plot(total[sort_idx], y[sort_idx], label='Cumulative', linewidth=6, color='black')
+    # pct = np.array([sum(total <= i) / len(total) for i in total])
+    pct = np.linspace(0, 1, len(total))
+    sort_idx = np.argsort(total)
+    ax.plot(pct, total[sort_idx], label='Cumulative', linewidth=6, color='black')
 
-    ax.set_xlabel('Distribution Similarity')
+    ax.set_xlabel('Percentile')
+    ax.set_ylabel('Distribution Similarity')
     # plt.tick_params(
     #     axis='x',
     #     which='both',
     #     bottom=False,
     #     top=False,
     #     labelbottom=False)
+    ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
-    ax.set_ylabel('CDF')
     ax.set_title(title)
     ax.legend()
+    ax.set_aspect('equal', adjustable='box')
