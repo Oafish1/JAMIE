@@ -846,7 +846,7 @@ def plot_integrated(data, labels, names=None, legend=True):
         for l in np.unique(np.concatenate(labels)):
             data_subset = np.transpose(plot_data[lab == l])
             ax.scatter(*data_subset, s=20., label=l)
-        if i == 1:
+        if i == 1 and legend:
             ax.legend()
         if names is not None:
             ax.set_title(names[i])
@@ -987,11 +987,16 @@ def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
     # ax.invert_xaxis()
 
     # Add text
-    for i, row in df.transpose().iterrows():
-        ax.annotate(i.replace('\n', ' '), (row['FOSCTTM']-.005, row[f'LTA (k={k})']+.005), ha='left')
+    # for i, row in df.transpose().iterrows():
+    #     ax.annotate(i.replace('\n', ' '), (row['FOSCTTM']-.005, row[f'LTA (k={k})']+.005), ha='left')
+    from adjustText import adjust_text
+    tbs = [
+        ax.text(row['FOSCTTM'], row[f'LTA (k={k})'], i.replace('\n', ' '), ha='center', va='center')
+        for i, row in df.transpose().iterrows()]
     ax.set_ylim([min(df.transpose()[f'LTA (k={k})']) - .01, max(df.transpose()[f'LTA (k={k})']) + .02])
     ax.set_xlim([max(df.transpose()['FOSCTTM']) + .01, min(df.transpose()['FOSCTTM']) - .02])
-    # plt.legend([])
+    adjust_text(tbs, force_points=10., arrowprops=dict(arrowstyle='-', color='black'))
+    ax.get_legend().remove()
 
 
 def plot_silhouette(data, labels, names, modal_names, colors=None):
@@ -1021,10 +1026,11 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
             palette=colors,
         )
         ax.set_title(modal_names[i])
-        if i == 0:
-            ax.legend()
-        else:
-            ax.legend([], [], frameon=False)
+        # if i == 0:
+        #     ax.legend()
+        # else:
+        #     ax.legend([], [], frameon=False)
+        ax.get_legend().remove()
 
 
 def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
@@ -1107,16 +1113,16 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
     ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes)
 
 
-def plot_auroc(imputed_data, data, modal_names, names=None):
+def plot_auroc(*args, **kwargs):
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
-        _plot_auroc(imputed_data, data, modal_names, ax, i=i, names=names)
+        _plot_auroc(*args, ax=ax, i=i, **kwargs)
 
 
-def plot_correlation(imputed_data, data, modal_names, names=None):
+def plot_correlation(*args, **kwargs):
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
-        _plot_correlation(imputed_data, data, modal_names, ax, i=i, names=names)
+        _plot_correlation(*args, ax=ax, i=i, **kwargs)
 
 
 def plot_auroc_correlation(imputed_data, data, modal_names, index=0, names=None):
@@ -1136,12 +1142,10 @@ def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=Non
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
         df = pd.DataFrame(datasets[i])
-        if fnames[i] is not None:
-            df.columns = fnames[i]
-            df.columns.name = None
-        else:
-            df.columns = [f'Feature {i}' for i in range(len(df.columns))]
-            df.columns.name = None
+        fname = fnames[i] if fnames[i] is not None else [f'Feature {i}' for i in range(len(df.columns))]
+        fname = np.array(fname)
+        df.columns = fname
+        df.columns.name = None
         df['_type'] = labels[i]
         df['_sample'] = df.index
 
@@ -1150,6 +1154,8 @@ def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=Non
             id_vars=id_vars,
             value_vars=list(set(df.keys()) - set(id_vars)))
         df = df.rename(columns={'variable': 'Variable', 'value': 'Value', '_type': 'Type'})
+        df['fsorted'] = [np.argwhere(fname==x)[0][0] for x in df['Variable']]
+        df = df.sort_values('fsorted')
 
         # Plot
         sns.boxplot(
@@ -1159,24 +1165,29 @@ def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=Non
             hue='Type',
             ax=ax,
         )
+        for i in range(feature_limit-1):
+            ax.axvline(x=i+.5, color='black', linestyle='--')
         ax.set_ylabel(f'{supert} ({names[i]})')
         ax.set_xlabel(None)
         ax.legend([], [], frameon=False)
     # plt.gcf().suptitle(supert)
 
 
-def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True):
+def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True, label_cells=False):
     from scipy.spatial import distance
     from scipy import stats
 
     assert datasets[0].shape[1] == datasets[1].shape[1]
 
+    # Assumes aligned datasets
     total_features = min(datasets[0].shape[1], max_features)
+    # Samples by default
+    feat_idx = np.random.choice(datasets[0].shape[1], total_features, replace=False)
     ax = plt.gcf().add_subplot(1, 1, 1)
     distances = {}
     for l in np.unique(labels):
         distances[l] = []
-        for f in range(total_features):
+        for f in feat_idx:
             data_all = [datasets[j][:, f] for j in range(len(datasets))]
             data = [datasets[j][labels[j] == l, f] for j in range(len(datasets))]
             if relative and (np.max(data_all[0]) - np.min(data_all[0])) != 0 and (np.max(data_all[1]) - np.min(data_all[1])) != 0:
@@ -1201,7 +1212,7 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100,
         # pct = np.array([sum(np.array(v) <= i) / len(v) for i in np.array(v)])
         pct = np.linspace(0, 1, len(v))
         sort_idx = np.argsort(v)
-        ax.plot(pct, np.array(v)[sort_idx], label=l)
+        ax.plot(pct, np.array(v)[sort_idx], label=l if label_cells else '_nolegend_')
     # ax.plot(range(total_features), total[sort_idx], label='Cumulative', linewidth=6, color='black')
     # pct = np.array([sum(total <= i) / len(total) for i in total])
     pct = np.linspace(0, 1, len(total))

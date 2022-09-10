@@ -1,6 +1,9 @@
 # 3.8.3
+- Add `adjustText` for cleaner text notations
 - Add more SHAP visualizations
 - Add scDART
+- Adjusted evaluation figure text size
+- Changed sampling logic on distribution similarity calculation
 - Fix bug for non-aligned datasets in `commando` module
 - Stylistic changes in `evaluation`
 - Various visualizations in `evaluation` module
