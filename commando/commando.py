@@ -44,9 +44,10 @@ class ComManDo(uc.UnionCom):
         loss_weights=None,
         model_class=edModel,
         pca_dim=None,
+        batch_step=False,
         use_early_stop=True,
-        min_increment=.1,
-        max_steps_without_increment=200,
+        min_increment=1e-8,
+        max_steps_without_increment=500,
         debug=False,
         **kwargs
     ):
@@ -60,6 +61,7 @@ class ComManDo(uc.UnionCom):
         self.model_class = model_class
         self.pca_dim = pca_dim
 
+        self.batch_step = batch_step
         self.use_early_stop = use_early_stop
         self.min_increment = min_increment
         self.max_steps_without_increment = max_steps_without_increment
@@ -124,7 +126,8 @@ class ComManDo(uc.UnionCom):
             self.col.append(np.shape(self.dataset[i])[1])
 
         # Compute the distance matrix
-        self.compute_distances()
+        self.compute_distances(save_dist=
+            ( (self.match_result is None) and (self.project_mode not in ['tsne']) ))
         time.log('Distance')
 
         # Find correspondence between samples
@@ -398,6 +401,10 @@ class ComManDo(uc.UnionCom):
             pca_inv_list = []
             for dim, data in zip(self.pca_dim, self.dataset):
                 if dim is not None:
+                    # Maybe allow pre-calculated PCA as input?
+                    # Could use subsample of data for training, all for PCA
+                    assert min(*data.shape) >= dim, (
+                        f'PCA dim must be lower than {min(*data.shape)}, found {dim}')
                     pca = PCA(n_components=dim).fit(data)
                     pca_list.append(pca.transform)
                     pca_inv_list.append(pca.inverse_transform)
@@ -457,13 +464,14 @@ class ComManDo(uc.UnionCom):
             self.batch_size = np.max(self.row)
 
         # Early stopping setup
-        best_loss = np.inf
+        best_running_loss = np.inf
         streak = 0
 
         timer.log('Setup')
 
         for epoch in range(self.epoch_DNN):
             epoch_loss = 0
+            best_batch_loss = np.inf
             for batch_idx in range(len_dataloader):
                 batch_loss = 0
 
@@ -576,14 +584,23 @@ class ComManDo(uc.UnionCom):
                 else:
                     batch_loss = sum(losses)
                 epoch_loss += batch_loss / len_dataloader
+                if batch_loss < best_batch_loss:
+                    best_batch_loss = batch_loss
 
                 # Append losses
                 batch_loss.backward()
 
-            # Step
-            optimizer.step()
-            optimizer.zero_grad()
-            timer.log('Step')
+                if self.batch_step:
+                    # Step
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    timer.log('Step')
+
+            if not self.batch_step:
+                # Step
+                optimizer.step()
+                optimizer.zero_grad()
+                timer.log('Step')
 
             # CLI Printing
             if (epoch+1) % self.log_DNN == 0:
@@ -597,9 +614,14 @@ class ComManDo(uc.UnionCom):
                     print([lo.detach().cpu() for lo in losses])
 
             # Early stopping
-            epsilon = best_loss - epoch_loss
+
+            if self.batch_step:
+                active_loss = best_batch_loss
+            else:
+                active_loss = epoch_loss
+            epsilon = best_running_loss - active_loss
             if epsilon > self.min_increment:
-                best_loss = epoch_loss
+                best_running_loss = active_loss
                 streak = 0
             else:
                 streak += 1
@@ -632,8 +654,10 @@ class ComManDo(uc.UnionCom):
             out = post_function(out)
         return out
 
-    def compute_distances(self):
+    def compute_distances(self, save_dist=True):
         """Helper function to compute distances for each dataset"""
+        if save_dist:
+            self.dist = []
         print('Shape of Raw data')
         for i in range(self.dataset_num):
             print('Dataset {}:'.format(i), np.shape(self.dataset[i]))
@@ -676,8 +700,9 @@ class ComManDo(uc.UnionCom):
                     return pairwise_distances(df, metric=self.distance_mode)
 
             self.distance_function = distance_function
-            distances = self.distance_function(self.dataset[i])
-            self.dist.append(distances)
+            if save_dist:
+                distances = self.distance_function(self.dataset[i])
+                self.dist.append(distances)
 
     def test_closer(
         self,

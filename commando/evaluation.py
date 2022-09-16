@@ -1,6 +1,7 @@
 import contextlib
 import math
 
+from adjustText import adjust_text
 from matplotlib.collections import PatchCollection
 import matplotlib.pyplot as plt
 import numpy as np
@@ -406,7 +407,7 @@ class generate_figure():
             value_vars=list(keys)[1:])
             for keys in (keys_01, keys_0i))
         dfs = [df_01, df_0i]
-        df_names = ['Cell-Type Prediction Efficacy', 'Worst-Case Cluster Mixing']
+        df_names = ['Type Prediction Efficacy', 'Worst-Case Cluster Mixing']
         df_log = [False, True]
         for i, df in enumerate(dfs):
             ax = csubfigs[csubfig_idx].subplots(1, 1)
@@ -516,7 +517,7 @@ class generate_figure():
                 ax=ax
             )
             ax.set_title(integrated_alg_names[i])
-        cfig.suptitle('Distance of Medoid by Cell Type')
+        cfig.suptitle('Distance of Medoid by Type')
 
     def _get_silhouette_value_boxplots_shape(self):
         scale = .5
@@ -535,32 +536,32 @@ class generate_figure():
         axs = cfig.subplots(1, num_modalities)
         for i, ax in enumerate(axs):
             # Calculate coefficients
-            df = pd.DataFrame(columns=['Algorithm', 'Cell', 'Silhouette Coefficient'])
+            df = pd.DataFrame(columns=['Algorithm', 'Type', 'Silhouette Coefficient'])
             for j in range(num_algorithms):
                 coefs = silhouette_samples(integrated_data[j][i], types[i])
                 for label in np.unique(np.concatenate(labels)):
                     for value in coefs[labels[i] == label]:
                         df = df.append({
                             'Algorithm': integrated_alg_names[j],
-                            'Cell': label,
+                            'Type': label,
                             'Silhouette Coefficient': value,
                         }, ignore_index=True)
 
             # Plot
             sns.boxplot(
                 data=df,
-                x='Cell',
+                x='Type',
                 y='Silhouette Coefficient',
                 hue='Algorithm',
                 ax=ax,
                 palette=colors,
             )
-            ax.set_title('Cell-Type Separability on ' + dataset_names[i] + ' Latent Space')
+            ax.set_title('Type Separability on ' + dataset_names[i] + ' Latent Space')
             if i == 0 and legend:
                 ax.legend()
             else:
                 ax.legend([], [], frameon=False)
-        # cfig.suptitle('Silhouette Score by Cell Type')
+        # cfig.suptitle('Silhouette Score by Type')
 
     def _get_reconstruct_modality_shape(self):
         scale = 1
@@ -836,6 +837,24 @@ def test_LabelTA(integrated_data, datatype, k=None, return_k=False):
     return acc
 
 
+def plot_regular(data, labels, names=None, legend=True):
+    for i, (dat, lab) in enumerate(zip(data, labels)):
+        ax = plt.gcf().add_subplot(1, 2, i+1, projection='3d')
+        pca = PCA(n_components=3)
+        pca.fit(dat)
+        plot_data = pca.transform(dat)
+        for l in np.unique(np.concatenate(labels)):
+            data_subset = np.transpose(plot_data[lab == l])
+            ax.scatter(*data_subset, s=20., label=l)
+        if i == 1 and legend:
+            ax.legend()
+        if names is not None:
+            ax.set_title(names[i])
+        ax.set_xlabel('PC-1')
+        ax.set_ylabel('PC-2')
+        ax.set_zlabel('PC-3')
+
+
 def plot_integrated(data, labels, names=None, legend=True):
     for i, (dat, lab) in enumerate(zip(data, labels)):
         ax = plt.gcf().add_subplot(1, 2, i+1, projection='3d')
@@ -989,7 +1008,8 @@ def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
     # Add text
     # for i, row in df.transpose().iterrows():
     #     ax.annotate(i.replace('\n', ' '), (row['FOSCTTM']-.005, row[f'LTA (k={k})']+.005), ha='left')
-    from adjustText import adjust_text
+    # ax.axis('square')
+    ax.set_box_aspect(1)
     tbs = [
         ax.text(row['FOSCTTM'], row[f'LTA (k={k})'], i.replace('\n', ' '), ha='center', va='center')
         for i, row in df.transpose().iterrows()]
@@ -1005,26 +1025,28 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
     axs = plt.gcf().subplots(1, 2)
     for i, ax in enumerate(axs):
         # Calculate coefficients
-        df = pd.DataFrame(columns=['Algorithm', 'Cell Type', 'Silhouette Coefficient'])
+        df = pd.DataFrame(columns=['Algorithm', 'Type', 'Silhouette Coefficient'])
         for j in range(len(data)):
             coefs = silhouette_samples(data[j][i], types[i])
             for l in np.unique(np.concatenate(labels)):
                 for value in coefs[labels[i] == l]:
                     df = df.append({
                         'Algorithm': names[j],
-                        'Cell Type': l,
+                        'Type': l,
                         'Silhouette Coefficient': value,
                     }, ignore_index=True)
 
         # Plot
         sns.boxplot(
             data=df,
-            x='Cell Type',
+            x='Type',
             y='Silhouette Coefficient',
             hue='Algorithm',
             ax=ax,
             palette=colors,
         )
+        for j in range(len(np.unique(np.concatenate(labels)))-1):
+            ax.axvline(x=j+.5, color='black', linestyle='--')
         ax.set_title(modal_names[i])
         # if i == 0:
         #     ax.legend()
@@ -1033,35 +1055,58 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
         ax.get_legend().remove()
 
 
-def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
+def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_features=10000):
+    total_features = min(data[i].shape[1], max_features)
+    # Samples by default
+    feat_idx = np.random.choice(data[i].shape[1], total_features, replace=False)
+
     feat_auc = []
     for im in imputed_data:
         pred = im[i]
         true = data[i]; true = 1 * (true > np.median(true))
 
         temp = []
-        for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+        for pr, tr in zip(np.transpose(pred)[feat_idx], np.transpose(true)[feat_idx]):
             if len(np.unique(tr)) == 2:
                 temp.append(roc_auc_score(tr, pr))
         feat_auc.append(temp)
 
-    ax.scatter(*feat_auc, facecolor='none', edgecolor='black')
+    # Plot
+    # ax.scatter(*feat_auc, facecolor='none', edgecolor='black')
+    # ax.axis('square')
+    # lcolor='black'
+
+    # https://www.python-graph-gallery.com/85-density-plot-with-matplotlib
+    from scipy.stats import kde
+    nbins = 300
+    x, y = [np.array(f) for f in feat_auc]
+    proc = np.stack([x, y], axis=0)
+    proc = proc[:, ~np.isnan(proc).any(axis=0)]
+    proc = proc[:, ~np.isinf(proc).any(axis=0)]
+    x, y = proc[0], proc[1]
+    k = kde.gaussian_kde([x,y])
+    MIN = min(x.min(), y.min())
+    MAX = min(x.max(), y.max())
+    xi, yi = np.mgrid[MIN:MAX:nbins*1j, MIN:MAX:nbins*1j]
+    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+    ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
+    lcolor='red'
+
     ax.set_title(f'AUROC for {modal_names[i]}')
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
-    ax.axis('square')
 
     # Plot y=x
     lims = [
         max(ax.get_xlim()[0], ax.get_ylim()[0]),
         min(ax.get_xlim()[1], ax.get_ylim()[1])]
-    ax.plot(lims, lims, 'k-', alpha=0.75)
+    ax.plot(lims, lims, '-', color=lcolor, alpha=0.75)
 
     # Text output
     gre = sum(np.greater(feat_auc[1], feat_auc[0]))
-    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes)
+    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
     les = sum(np.greater(feat_auc[0], feat_auc[1]))
-    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes)
+    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
     n = len(feat_auc[0])
     # Null hypothesis - equal methods (two-tailed)
     # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
@@ -1069,40 +1114,63 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None):
     if p_value > .5:
         p_value = 1 - p_value
     p_value *= 2
-    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes)
+    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
 
 
-def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
+def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_features=10000):
+    total_features = min(data[i].shape[1], max_features)
+    # Samples by default
+    feat_idx = np.random.choice(data[i].shape[1], total_features, replace=False)
+
     feat_corr = []
     for im in imputed_data:
         pred = im[i]
         true = data[i]
 
         temp = []
-        for pr, tr in zip(np.transpose(pred), np.transpose(true)):
+        for pr, tr in zip(np.transpose(pred)[feat_idx], np.transpose(true)[feat_idx]):
             if len(np.unique(tr)) > 1:
                 temp.append(r_regression(np.reshape(pr, (-1, 1)), tr)[0])
                 # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
         feat_corr.append(temp)
 
-    ax.scatter(*feat_corr, facecolor='none', edgecolor='black')
+    # Plot
+    # ax.scatter(*feat_corr, facecolor='none', edgecolor='black')
+    # ax.axis('square')
+    # lcolor='black'
+
+    # https://www.python-graph-gallery.com/85-density-plot-with-matplotlib
+    from scipy.stats import kde
+    nbins = 300
+    x, y = [np.array(f) for f in feat_corr]
+    proc = np.stack([x, y], axis=0)
+    proc = proc[:, ~np.isnan(proc).any(axis=0)]
+    proc = proc[:, ~np.isinf(proc).any(axis=0)]
+    x, y = proc[0], proc[1]
+    k = kde.gaussian_kde([x,y])
+    MIN = min(x.min(), y.min())
+    MAX = min(x.max(), y.max())
+    xi, yi = np.mgrid[MIN:MAX:nbins*1j, MIN:MAX:nbins*1j]
+    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+    ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
+    lcolor='red'
+
     ax.set_title(f'Correlation for {modal_names[i]}')
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
-    ax.axis('square')
 
     # Plot y=x
     lims = [
         max(ax.get_xlim()[0], ax.get_ylim()[0]),
         min(ax.get_xlim()[1], ax.get_ylim()[1])]
-    ax.plot(lims, lims, 'k-', alpha=0.75)
+    ax.plot(lims, lims, '-', color=lcolor, alpha=0.75)
 
     # Text output
     # would use transform=ax.transAxes, but warps
     gre = sum(np.greater(feat_corr[1], feat_corr[0]))
-    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes)
+    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
     les = sum(np.greater(feat_corr[0], feat_corr[1]))
-    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes)
+    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
     n = len(feat_corr[0])
     # Null hypothesis - equal methods (two-tailed)
     # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
@@ -1110,7 +1178,7 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None):
     if p_value > .5:
         p_value = 1 - p_value
     p_value *= 2
-    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes)
+    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
 
 
 def plot_auroc(*args, **kwargs):
@@ -1125,10 +1193,10 @@ def plot_correlation(*args, **kwargs):
         _plot_correlation(*args, ax=ax, i=i, **kwargs)
 
 
-def plot_auroc_correlation(imputed_data, data, modal_names, index=0, names=None):
+def plot_auroc_correlation(*args, index=0, **kwargs):
     axs = plt.gcf().subplots(1, 2)
-    _plot_auroc(imputed_data, data, modal_names, axs[0], i=index, names=names)
-    _plot_correlation(imputed_data, data, modal_names, axs[1], i=index, names=names)
+    _plot_auroc(*args, ax=axs[0], i=index, **kwargs)
+    _plot_correlation(*args, ax=axs[1], i=index, **kwargs)
 
 
 def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=None):
@@ -1139,7 +1207,7 @@ def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=Non
             if fnames[i] is not None:
                 fnames[i] = fnames[i][:feature_limit]
 
-    axs = plt.gcf().subplots(1, 2)
+    axs = plt.gcf().subplots(1, 2, sharey=True)
     for i, ax in enumerate(axs):
         df = pd.DataFrame(datasets[i])
         fname = fnames[i] if fnames[i] is not None else [f'Feature {i}' for i in range(len(df.columns))]
@@ -1165,15 +1233,19 @@ def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=Non
             hue='Type',
             ax=ax,
         )
-        for i in range(feature_limit-1):
-            ax.axvline(x=i+.5, color='black', linestyle='--')
-        ax.set_ylabel(f'{supert} ({names[i]})')
+        for j in range(feature_limit-1):
+            ax.axvline(x=j+.5, color='black', linestyle='--')
         ax.set_xlabel(None)
+    # ax.set_ylabel(f'{supert} ({names[i]})')
+        if i == 0:
+            ax.set_ylabel(supert)
+        else:
+            ax.set_ylabel(None)
+        ax.set_title(names[i])
         ax.legend([], [], frameon=False)
-    # plt.gcf().suptitle(supert)
 
 
-def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True, label_cells=False):
+def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True, label_cells=True, legend=True):
     from scipy.spatial import distance
     from scipy import stats
 
@@ -1230,5 +1302,8 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100,
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
     ax.set_title(title)
-    ax.legend()
     ax.set_aspect('equal', adjustable='box')
+    if legend:
+        ax.legend()
+    else:
+        ax.legend([], [], frameon=False)

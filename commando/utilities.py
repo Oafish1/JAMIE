@@ -211,7 +211,7 @@ def ensure_list(x):
 
 class SimpleModel(nn.Module):
     """Thin, simple NN model"""
-    def __init__(self, input_dim, output_dim, hidden_dim=3, p=0.6):
+    def __init__(self, input_dim, output_dim, hidden_dim=2, p=0.6):
         super().__init__()
 
         self.fc1 = nn.Linear(input_dim, hidden_dim)

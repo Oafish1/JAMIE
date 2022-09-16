@@ -1,10 +1,14 @@
 # 3.8.3
 - Add `adjustText` for cleaner text notations
+- Add `batch_step` option for typical AE iteration
 - Add more SHAP visualizations
 - Add scDART
+- Added BABEL datasets
 - Adjusted evaluation figure text size
+- Change visualizations, especially for distributions
 - Changed sampling logic on distribution similarity calculation
 - Fix bug for non-aligned datasets in `commando` module
+- Fix SVD solver option in automated PCA
 - Stylistic changes in `evaluation`
 - Various visualizations in `evaluation` module
 
