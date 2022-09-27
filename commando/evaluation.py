@@ -6,6 +6,8 @@ from matplotlib.collections import PatchCollection
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import stats
+from scipy.spatial import distance
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import f_regression, r_regression
@@ -14,9 +16,11 @@ from sklearn.metrics import (
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.neighbors import KNeighborsClassifier
 import torch
+import umap
 
 from .commando import ComManDo
-from .utilities import ensure_list, predict_nn, SimpleDualEncoder
+from .utilities import (
+    ensure_list, outliers, predict_nn, set_yticks, sort_by_interest, SimpleDualEncoder)
 
 
 def test_partial(
@@ -816,7 +820,7 @@ def test_label_dist(
     return np.array(list(average_representation.keys())), dist
 
 
-def test_LabelTA(integrated_data, datatype, k=None, return_k=False):
+def test_LabelTA(integrated_data, datatype, k=5, return_k=False):
     """Modified version of UnionCom ``test_LabelTA`` to return acc"""
     if k is None:
         # Set to 20% of avg class size if no k provided
@@ -837,41 +841,75 @@ def test_LabelTA(integrated_data, datatype, k=None, return_k=False):
     return acc
 
 
-def plot_regular(data, labels, names=None, legend=True):
+def plot_regular(*args, **kwargs):
+    plot_integrated(*args, **kwargs, separate_dim=True)
+
+
+def plot_integrated(
+    data,
+    labels,
+    names=None,
+    legend=False,
+    remove_outliers=True,
+    n_components=2,
+    separate_dim=False,
+    square=False,
+    method='umap',
+):
+    assert method in ('pca', 'umap')
+    method_names = {'pca': 'PC', 'umap': 'UMAP'}
+    assert n_components in (2, 3), 'Only supports 2d and 3d at this time.'
+    proj_method = '3d' if n_components == 3 else None
+    axs = []
     for i, (dat, lab) in enumerate(zip(data, labels)):
-        ax = plt.gcf().add_subplot(1, 2, i+1, projection='3d')
-        pca = PCA(n_components=3)
-        pca.fit(dat)
-        plot_data = pca.transform(dat)
+        ax = plt.gcf().add_subplot(1, len(data), i+1, projection=proj_method)
+        axs.append(ax)
+        if i == 0 or separate_dim:
+            if method == 'pca':
+                red = PCA(n_components=n_components)
+                red.fit(dat)
+            elif method == 'umap':
+                red = umap.UMAP(n_components=n_components)
+                if separate_dim:
+                    red.fit(dat)
+                else:
+                    red.fit(np.concatenate(data, axis=0))
+        plot_data = red.transform(dat)
+        if remove_outliers:
+            filter = outliers(plot_data)
         for l in np.unique(np.concatenate(labels)):
             data_subset = np.transpose(plot_data[lab == l])
+            if remove_outliers:
+                data_subset = data_subset[:, ~filter[lab == l]]
             ax.scatter(*data_subset, s=20., label=l)
         if i == 1 and legend:
             ax.legend()
         if names is not None:
             ax.set_title(names[i])
-        ax.set_xlabel('PC-1')
-        ax.set_ylabel('PC-2')
-        ax.set_zlabel('PC-3')
-
-
-def plot_integrated(data, labels, names=None, legend=True):
-    for i, (dat, lab) in enumerate(zip(data, labels)):
-        ax = plt.gcf().add_subplot(1, 2, i+1, projection='3d')
-        if i == 0:
-            pca = PCA(n_components=3)
-            pca.fit(dat)
-        plot_data = pca.transform(dat)
-        for l in np.unique(np.concatenate(labels)):
-            data_subset = np.transpose(plot_data[lab == l])
-            ax.scatter(*data_subset, s=20., label=l)
-        if i == 1 and legend:
-            ax.legend()
-        if names is not None:
-            ax.set_title(names[i])
-        ax.set_xlabel('Component-1')
-        ax.set_ylabel('Component-2')
-        ax.set_zlabel('Component-3')
+        ax.set_xlabel(f'{method_names[method]}-1')
+        ax.set_ylabel(f'{method_names[method]}-2')
+        if n_components == 2 and square:
+            ax.set_aspect('equal')
+        elif n_components == 3:
+            ax.set_zlabel(f'{method_names[method]}-3')
+            if square:
+                # https://stackoverflow.com/a/13701747
+                X, Y, Z = np.transpose(plot_data)
+                # Create cubic bounding box to simulate equal aspect ratio
+                max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max()
+                Xb = 0.5*max_range*np.mgrid[-1:2:2,-1:2:2,-1:2:2][0].flatten() + 0.5*(X.max()+X.min())
+                Yb = 0.5*max_range*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y.max()+Y.min())
+                Zb = 0.5*max_range*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z.max()+Z.min())
+                for xb, yb, zb in zip(Xb, Yb, Zb):
+                   ax.plot([xb], [yb], [zb], 'w')
+    if not separate_dim:
+        axs_xlim = np.array([ax.get_xlim() for ax in axs])
+        axs_ylim = np.array([ax.get_ylim() for ax in axs])
+        new_xlim = (axs_xlim.min(axis=0)[0], axs_xlim.max(axis=0)[1])
+        new_ylim = (axs_ylim.min(axis=0)[0], axs_ylim.max(axis=0)[1])
+        for ax in axs:
+            ax.set_xlim(new_xlim)
+            ax.set_ylim(new_ylim)
 
 
 def plot_accuracy(data, labels, names, colors=None):
@@ -995,15 +1033,14 @@ def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
         x='FOSCTTM',
         y=f'LTA (k={k})',
         hue='Algorithm',
-        style='Algorithm',
+        # style='Algorithm',
         ax=ax,
-        palette=[c for i, c in enumerate(colors) if i not in exclude],
-        edgecolor='black',
+        palette=[c for i, c in enumerate(colors) if i not in exclude] if colors is not None else None,
+        # edgecolor='black',
         s=200,
         alpha=1)
     ax.set_xlabel('FOSCTTM')
     ax.set_ylabel(f'LTA (k={k})')
-    # ax.invert_xaxis()
 
     # Add text
     # for i, row in df.transpose().iterrows():
@@ -1015,14 +1052,16 @@ def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
         for i, row in df.transpose().iterrows()]
     ax.set_ylim([min(df.transpose()[f'LTA (k={k})']) - .01, max(df.transpose()[f'LTA (k={k})']) + .02])
     ax.set_xlim([max(df.transpose()['FOSCTTM']) + .01, min(df.transpose()['FOSCTTM']) - .02])
-    adjust_text(tbs, force_points=10., arrowprops=dict(arrowstyle='-', color='black'))
+    adjust_text(tbs, force_points=2., arrowprops=dict(arrowstyle='-', color='black'))
     ax.get_legend().remove()
 
 
 def plot_silhouette(data, labels, names, modal_names, colors=None):
     types = [np.unique(type, return_inverse=True)[1] for type in labels]
 
-    axs = plt.gcf().subplots(1, 2)
+    axs = plt.gcf().subplots(1, len(data[0]))
+    if len(data[0]) == 1:
+        axs = [axs]
     for i, ax in enumerate(axs):
         # Calculate coefficients
         df = pd.DataFrame(columns=['Algorithm', 'Type', 'Silhouette Coefficient'])
@@ -1047,11 +1086,9 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
         )
         for j in range(len(np.unique(np.concatenate(labels)))-1):
             ax.axvline(x=j+.5, color='black', linestyle='--')
-        ax.set_title(modal_names[i])
-        # if i == 0:
-        #     ax.legend()
-        # else:
-        #     ax.legend([], [], frameon=False)
+        ax.set_title(f'Silhouette Coefficients ({modal_names[i]})')
+        ax.set_xlabel(None)
+        ax.set_ylabel(None)
         ax.get_legend().remove()
 
 
@@ -1068,54 +1105,12 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_featur
         temp = []
         for pr, tr in zip(np.transpose(pred)[feat_idx], np.transpose(true)[feat_idx]):
             if len(np.unique(tr)) == 2:
-                temp.append(roc_auc_score(tr, pr))
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    temp.append(roc_auc_score(tr, pr))
         feat_auc.append(temp)
-
-    # Plot
-    # ax.scatter(*feat_auc, facecolor='none', edgecolor='black')
-    # ax.axis('square')
-    # lcolor='black'
-
-    # https://www.python-graph-gallery.com/85-density-plot-with-matplotlib
-    from scipy.stats import kde
-    nbins = 300
-    x, y = [np.array(f) for f in feat_auc]
-    proc = np.stack([x, y], axis=0)
-    proc = proc[:, ~np.isnan(proc).any(axis=0)]
-    proc = proc[:, ~np.isinf(proc).any(axis=0)]
-    x, y = proc[0], proc[1]
-    k = kde.gaussian_kde([x,y])
-    MIN = min(x.min(), y.min())
-    MAX = min(x.max(), y.max())
-    xi, yi = np.mgrid[MIN:MAX:nbins*1j, MIN:MAX:nbins*1j]
-    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-    ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
-    lcolor='red'
-
-    ax.set_title(f'AUROC for {modal_names[i]}')
-    ax.set_xlabel(names[0])
-    ax.set_ylabel(names[1])
-
-    # Plot y=x
-    lims = [
-        max(ax.get_xlim()[0], ax.get_ylim()[0]),
-        min(ax.get_xlim()[1], ax.get_ylim()[1])]
-    ax.plot(lims, lims, '-', color=lcolor, alpha=0.75)
-
-    # Text output
-    gre = sum(np.greater(feat_auc[1], feat_auc[0]))
-    ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
-    les = sum(np.greater(feat_auc[0], feat_auc[1]))
-    ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
-    n = len(feat_auc[0])
-    # Null hypothesis - equal methods (two-tailed)
-    # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
-    p_value = sum(2**(math.log(math.comb(n, i), 2) - n) for i in range(n+1) if i >= gre)
-    if p_value > .5:
-        p_value = 1 - p_value
-    p_value *= 2
-    ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
-
+    _plot_auroc_correlation_template(ax, feat_auc, names, 'AUROC', modal_names[i])
 
 def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_features=10000):
     total_features = min(data[i].shape[1], max_features)
@@ -1130,32 +1125,46 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_
         temp = []
         for pr, tr in zip(np.transpose(pred)[feat_idx], np.transpose(true)[feat_idx]):
             if len(np.unique(tr)) > 1:
-                temp.append(r_regression(np.reshape(pr, (-1, 1)), tr)[0])
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    temp.append(r_regression(np.reshape(pr, (-1, 1)), tr)[0])
                 # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
         feat_corr.append(temp)
+    _plot_auroc_correlation_template(ax, feat_corr, names, 'Correlation', modal_names[i])
 
-    # Plot
-    # ax.scatter(*feat_corr, facecolor='none', edgecolor='black')
-    # ax.axis('square')
-    # lcolor='black'
 
-    # https://www.python-graph-gallery.com/85-density-plot-with-matplotlib
-    from scipy.stats import kde
-    nbins = 300
-    x, y = [np.array(f) for f in feat_corr]
-    proc = np.stack([x, y], axis=0)
-    proc = proc[:, ~np.isnan(proc).any(axis=0)]
-    proc = proc[:, ~np.isinf(proc).any(axis=0)]
-    x, y = proc[0], proc[1]
-    k = kde.gaussian_kde([x,y])
-    MIN = min(x.min(), y.min())
-    MAX = min(x.max(), y.max())
-    xi, yi = np.mgrid[MIN:MAX:nbins*1j, MIN:MAX:nbins*1j]
-    zi = k(np.vstack([xi.flatten(), yi.flatten()]))
-    ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
-    lcolor='red'
+def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot_type='scatter'):
+    assert plot_type in ('scatter', 'density')
 
-    ax.set_title(f'Correlation for {modal_names[i]}')
+    if plot_type == 'scatter':
+        # Scatterplot
+        if len(feat[0]) > 100:
+            s = 3
+        else:
+            s = 10
+        ax.scatter(*feat, facecolor='black', edgecolor='none', s=s)
+        ax.axis('square')
+        lcolor='red'
+    elif plot_type == 'density':
+        # Density plot
+        # https://www.python-graph-gallery.com/85-density-plot-with-matplotlib
+        from scipy.stats import kde
+        nbins = 300
+        x, y = [np.array(f) for f in feat]
+        proc = np.stack([x, y], axis=0)
+        proc = proc[:, ~np.isnan(proc).any(axis=0)]
+        proc = proc[:, ~np.isinf(proc).any(axis=0)]
+        x, y = proc[0], proc[1]
+        k = kde.gaussian_kde([x,y])
+        MIN = min(x.min(), y.min())
+        MAX = min(x.max(), y.max())
+        xi, yi = np.mgrid[MIN:MAX:nbins*1j, MIN:MAX:nbins*1j]
+        zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+        ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
+        lcolor='red'
+
+    ax.set_title(f'{suptitle} for {modal_name}')
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
 
@@ -1167,11 +1176,11 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_
 
     # Text output
     # would use transform=ax.transAxes, but warps
-    gre = sum(np.greater(feat_corr[1], feat_corr[0]))
+    gre = sum(np.greater(feat[1], feat[0]))
     ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
-    les = sum(np.greater(feat_corr[0], feat_corr[1]))
+    les = sum(np.greater(feat[0], feat[1]))
     ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
-    n = len(feat_corr[0])
+    n = len(feat[0])
     # Null hypothesis - equal methods (two-tailed)
     # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
     p_value = sum(2**(math.log(math.comb(n, i), 2) - n) for i in range(n+1) if i >= gre)
@@ -1199,16 +1208,39 @@ def plot_auroc_correlation(*args, index=0, **kwargs):
     _plot_correlation(*args, ax=axs[1], i=index, **kwargs)
 
 
-def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=None):
-    names = ['Measured', 'Imputed']
+def plot_distribution_alone(
+    datasets,
+    labels,
+    feature_limit=3,
+    title=None,
+    fnames=None,
+    gcf=None,
+    rows=2,
+    **kwargs,
+):
+    datasets = [np.array(d) for d in datasets]
+    if gcf is None:
+        gcf = plt.gcf()
+
+    # Destructively limit data
+    names = ['Real', 'Imputed']
     if feature_limit is not None:
-        datasets = [data[:, :feature_limit] for data in datasets]
+        feature_idx = sort_by_interest(datasets, limit=feature_limit)[1]
+        datasets = [data[:, feature_idx] for data in datasets]
         for i in range(len(fnames)):
             if fnames[i] is not None:
-                fnames[i] = fnames[i][:feature_limit]
+                fnames[i] = fnames[i][feature_idx]
 
-    axs = plt.gcf().subplots(1, 2, sharey=True)
-    for i, ax in enumerate(axs):
+    # Distribution preview
+    axs = []
+    for i in range(2):
+        if i == 0:
+            ax = gcf.add_subplot(rows, 1, rows-1+i)
+        elif i == 1:
+            ax = gcf.add_subplot(rows, 1, rows-1+i, sharex=ax)
+        else:
+            assert False, 'Unexpected number of subplots'
+        axs.append(ax)
         df = pd.DataFrame(datasets[i])
         fname = fnames[i] if fnames[i] is not None else [f'Feature {i}' for i in range(len(df.columns))]
         fname = np.array(fname)
@@ -1235,33 +1267,77 @@ def plot_distribution(datasets, labels, feature_limit=3, supert=None, fnames=Non
         )
         for j in range(feature_limit-1):
             ax.axvline(x=j+.5, color='black', linestyle='--')
+        ax.set_xticks([])
         ax.set_xlabel(None)
-    # ax.set_ylabel(f'{supert} ({names[i]})')
         if i == 0:
-            ax.set_ylabel(supert)
+            ax.set_title(f'Sample Feature Distributions ({title})')
+            # ax.axhline(y=ax.get_ylim()[0], color='black', linestyle='-', linewidth=5)
         else:
-            ax.set_ylabel(None)
-        ax.set_title(names[i])
+            ax.set_title(None)
+        ax.set_ylabel(names[i])
         ax.legend([], [], frameon=False)
+    axs_ylim = np.array([ax.get_ylim() for ax in axs])
+    new_ylim = (axs_ylim.min(axis=0)[0], axs_ylim.max(axis=0)[1])
+    for ax in axs:
+        ax.set_ylim(new_ylim)
+        set_yticks(ax, 4)
+    plt.gcf().subplots_adjust(hspace=0)
 
 
-def plot_distribution_similarity(datasets, labels, title=None, max_features=100, relative=True, label_cells=True, legend=True):
-    from scipy.spatial import distance
-    from scipy import stats
+def plot_distribution(datasets, labels, feature_limit=3, title=None, **kwargs):
+    datasets = [np.array(d) for d in datasets]
 
+    # Grid
+    ax = plt.gcf().add_subplot(3, 1, 1)
+    import matplotlib.gridspec as gridspec
+    gs = gridspec.GridSpec(3, 1, height_ratios=[1, 2, 2])
+    ax.set_subplotspec(gs[0])
+    # Distribution similarity
+    plot_distribution_similarity(
+        datasets,
+        labels,
+        suptitle=title,
+        ax=ax,
+        square=False,
+        legend=False,
+        **kwargs)
+    set_yticks(ax, 2)
+    ax.set_xticks([])
+    ax.set_xlim([0, 1])
+    ax.set_ylabel('Simulated')
+
+    plot_distribution_alone(datasets, labels, rows=3, title=None, **kwargs)
+    plt.gcf().subplots_adjust(hspace=0)
+
+
+def plot_distribution_similarity(
+    datasets,
+    labels,
+    suptitle=None,
+    title=None,
+    max_features=100,
+    relative=True,
+    label_cells=True,
+    legend=False,
+    square=True,
+    ax=None,
+    **kwargs,
+):
     assert datasets[0].shape[1] == datasets[1].shape[1]
+    datasets = [np.array(d) for d in datasets]
 
     # Assumes aligned datasets
     total_features = min(datasets[0].shape[1], max_features)
     # Samples by default
     feat_idx = np.random.choice(datasets[0].shape[1], total_features, replace=False)
-    ax = plt.gcf().add_subplot(1, 1, 1)
+    if ax is None:
+        ax = plt.gcf().add_subplot(1, 1, 1)
     distances = {}
     for l in np.unique(labels):
         distances[l] = []
         for f in feat_idx:
             data_all = [datasets[j][:, f] for j in range(len(datasets))]
-            data = [datasets[j][labels[j] == l, f] for j in range(len(datasets))]
+            data = [np.array(datasets[j][labels[j] == l, f]) for j in range(len(datasets))]
             if relative and (np.max(data_all[0]) - np.min(data_all[0])) != 0 and (np.max(data_all[1]) - np.min(data_all[1])) != 0:
                 data = [(d - np.min(data_all[i])) / (np.max(data_all[i]) - np.min(data_all[i])) for i, d in enumerate(data)]
             X = np.linspace(np.min(data), np.max(data), 1000)
@@ -1292,7 +1368,7 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100,
     ax.plot(pct, total[sort_idx], label='Cumulative', linewidth=6, color='black')
 
     ax.set_xlabel('Percentile')
-    ax.set_ylabel('Distribution Similarity')
+    ax.set_ylabel(f'{title} Similarity')
     # plt.tick_params(
     #     axis='x',
     #     which='both',
@@ -1301,8 +1377,9 @@ def plot_distribution_similarity(datasets, labels, title=None, max_features=100,
     #     labelbottom=False)
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1])
-    ax.set_title(title)
-    ax.set_aspect('equal', adjustable='box')
+    ax.set_title(suptitle)
+    if square:
+        ax.set_aspect('equal', adjustable='box')
     if legend:
         ax.legend()
     else:

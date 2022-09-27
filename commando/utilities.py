@@ -1,13 +1,29 @@
 import contextlib
+import math
 from time import perf_counter
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import stats
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import torch
 import torch.nn as nn
 import umap
+
+
+def outliers(x, threshold=3.5):
+    """Detect outliers, similar to https://stackoverflow.com/a/11886564"""
+    med = np.median(x, axis=0)
+    d = np.linalg.norm(x - med, ord=2, axis=1)
+    med_d = np.median(d)
+    mod_z = .6745 * d / med_d
+    return mod_z > threshold
+
+
+def identity(x):
+    """Identity function, lambda cannot be used for pickle"""
+    return x
 
 
 def reduce_sample_data(df, num_samples=1000, num_features=1000):
@@ -211,16 +227,125 @@ def ensure_list(x):
 
 class SimpleModel(nn.Module):
     """Thin, simple NN model"""
-    def __init__(self, input_dim, output_dim, hidden_dim=2, p=0.6):
+    def __init__(self, input_dim, output_dim, hidden_dim=16, p=0.6):
         super().__init__()
 
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.dropout = nn.Dropout(p=p)
         self.fc2 = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, x):
+    def forward(self, *X):
         """Forward pass for the model"""
-        return self.fc2(self.dropout(self.fc1(x)))
+        return self.fc2(self.dropout(self.fc1(X[0])))
+
+    def lastForward(self, *X):
+        """Output forward pass for the model"""
+        return self.fc2(self.fc1(X[0]))
+
+    def loss(self, logits, *Y, criterion=None):
+        """Loss for the model"""
+        return criterion(logits, Y[1])
+
+
+class SimpleDualModel(nn.Module):
+    """Thin, simple NN model"""
+    def __init__(self, input_dim, output_dim, hidden_dim=10, p=0.6):
+        super().__init__()
+
+        self.fc1_1 = nn.Linear(input_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=p)
+        self.fc1_2 = nn.Linear(hidden_dim, input_dim)
+
+        self.fc2_1 = nn.Linear(output_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=p)
+        self.fc2_2 = nn.Linear(hidden_dim, output_dim)
+
+        self.conv = nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, *X):
+        """Forward pass for the model"""
+        e1, e2 = self.fc1_1(X[0]), self.fc2_1(X[1])
+        return (
+            self.fc1_2(self.dropout(e1)),
+            self.fc2_2(self.dropout(e2)),
+            self.conv(e1), e2)
+
+    def lastForward(self, *X):
+        """Output forward pass for the model"""
+        return self.fc2_2(self.conv(self.fc1_1(X[0])))
+
+    def loss(self, logits, *Y, criterion=None):
+        """Loss for the model"""
+        return (
+            criterion(logits[0], Y[0])
+            + criterion(logits[1], Y[1])
+            + criterion(logits[2], logits[3].detach()))
+
+
+class SimpleCommonDualModel(nn.Module):
+    """Thin, simple NN model"""
+    def __init__(self, input_dim, output_dim, hidden_dim=10, p=0.6):
+        super().__init__()
+
+        self.fc1_1 = nn.Linear(input_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=p)
+        self.fc1_2 = nn.Linear(hidden_dim, input_dim)
+
+        self.fc2_1 = nn.Linear(output_dim, hidden_dim)
+        self.dropout = nn.Dropout(p=p)
+        self.fc2_2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, *X):
+        """Forward pass for the model"""
+        e1, e2 = self.fc1_1(X[0]), self.fc2_1(X[1])
+        return (
+            self.fc1_2(self.dropout(e1)),
+            self.fc2_2(self.dropout(e2)),
+            e1, e2)
+
+    def lastForward(self, *X):
+        """Output forward pass for the model"""
+        return self.fc2_2(self.fc1_1(X[0]))
+
+    def loss(self, logits, *Y, criterion=None):
+        """Loss for the model"""
+        return (
+            criterion(logits[0], Y[0])
+            + criterion(logits[1], Y[1])
+            + criterion(logits[2], logits[3]))
+
+
+class BABELMini(nn.Module):
+    """Dual autoencoder based on BABEL"""
+    def __init__(self, input_dim, output_dim, hidden_dim=16):
+        super().__init__()
+
+        self.fc1_1 = nn.Linear(input_dim, hidden_dim)
+        self.fc1_2 = nn.Linear(hidden_dim, input_dim)
+
+        self.fc2_1 = nn.Linear(output_dim, hidden_dim)
+        self.fc2_2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, *X):
+        """Forward pass for the model"""
+        e1, e2 = self.fc1_1(X[0]), self.fc2_1(X[1])
+        return (
+            self.fc1_2(e1),
+            self.fc2_2(e2),
+            self.fc2_2(e1),
+            self.fc1_2(e2))
+
+    def lastForward(self, *X):
+        """Output forward pass for the model"""
+        return self.fc2_2(self.fc1_1(X[0]))
+
+    def loss(self, logits, *Y, criterion=None):
+        """Loss for the model"""
+        return (
+            criterion(logits[0], Y[0])
+            + criterion(logits[1], Y[1])
+            + criterion(logits[2], Y[1])
+            + criterion(logits[3], Y[0]))
 
 
 class SingleModel(nn.Module):
@@ -231,29 +356,57 @@ class SingleModel(nn.Module):
         self.dropout = nn.Dropout(p=p)
         self.fc1 = nn.Linear(input_dim, output_dim)
 
-    def forward(self, x):
+    def forward(self, *X):
         """Forward pass for the model"""
-        return self.fc1(self.dropout(x))
+        return self.fc1(self.dropout(X[0]))
+
+    def lastForward(self, *X):
+        """Output forward pass for the model"""
+        return self.fc1(self.dropout(X[0]))
+
+    def loss(self, logits, *Y, criterion=None):
+        """Loss for the model"""
+        return criterion(logits, Y[1])
 
 
-def predict_nn(source, target, val=None, epochs=200, batches=10):
+def predict_nn(source, target, val=None, epochs=200, batch_size=32):
     """Predict modality using a simple NN"""
-    model = SimpleModel(source.shape[1], target.shape[1])
+    model = SimpleDualModel(source.shape[1], target.shape[1])
     optimizer = torch.optim.AdamW(model.parameters())
     criterion = nn.MSELoss()
-    batch_size = int(len(source)/batches)
+    batches = int(len(source)/batch_size)
 
+    epoch_str_len = len(str(epochs))
+    batch_str_len = len(str(batches))
+    loss_detached = 0.0
     for epoch in range(epochs):
-        for _ in range(batches):
+        prog_str = math.floor(25*(epoch+1)/epochs) * '|'
+        for batch in range(batches):
+            batch_str = math.floor(10*(batch+1)/batches) * '+'
+            print(
+                f'{epoch+1:>{epoch_str_len}}/{epochs} [{prog_str:<25}]: - '
+                f'{batch+1:>{batch_str_len}}/{batches} ({batch_str:<10}) - '
+                f'Loss: {loss_detached:.4f}',
+                end='\r')
             idx = np.random.choice(range(len(source)), batch_size, replace=False)
             optimizer.zero_grad()
-            logits = model(source[idx])
-            loss = criterion(logits, target[idx])
+            logits = model(source[idx], target[idx])
+            loss = model.loss(logits, source[idx], target[idx], criterion=criterion)
+            loss_detached = loss.detach()
             loss.backward()
             optimizer.step()
+    print('\nDone!')
     if val is not None:
-        return model(val).detach().cpu().numpy()
-    return model(source).detach().cpu().numpy()
+        return model.lastForward(val).detach().cpu().numpy()
+    return model.lastForward(source).detach().cpu().numpy()
+
+
+def set_yticks(ax, num_ticks):
+    """Set a specified number of yticks in axes ax"""
+    yrange = (ax.get_ylim()[1] - ax.get_ylim()[0])
+    bottom = ax.get_ylim()[0] + .1 * yrange
+    top = ax.get_ylim()[1] - .1 * yrange
+    ax.set_yticks(np.round(np.linspace(bottom, top, num_ticks), 1))
 
 
 def tune_cm(cm, dataset, types, wt_size, num_search=20):
@@ -275,6 +428,68 @@ def tune_cm(cm, dataset, types, wt_size, num_search=20):
     print()
     print(f'Best Weights: {best_wt}')
     return best_wt, best_cm_data
+
+
+def sort_by_interest(datasets, int_thresh=.5, limit=20):
+    """Assesses datasets (real, imputed) and returns interesting indexes"""
+    if limit is None:
+        limit = datasets[0].shape[1]
+    # Score by entropy and imputation performance
+    entropy_arr = np.array([
+        stats.entropy(f) if not np.isnan(stats.entropy(f)) else -1
+        for f in datasets[0].T])
+    entropy_arr[np.isnan(entropy_arr)] = -1
+    entropy_sort = np.argsort(entropy_arr)[::-1]
+    corr_arr = np.array([
+        stats.pearsonr(datasets[0][:, i], datasets[1][:, i])[0]
+        for i in range(datasets[0].shape[1])])
+    corr_arr[np.isnan(corr_arr)] = -2
+    corr_sort = np.argsort(corr_arr)[::-1]
+    temp_order = np.argsort(
+        np.array([
+            np.argwhere(entropy_sort==i)[0][0]
+            + np.argwhere(corr_sort==i)[0][0]
+            for i in range(datasets[0].shape[1])
+    ]))
+
+    # Filter for interest and diversity
+    feature_idx = []
+    for i in temp_order:
+        if len(feature_idx) > limit:
+            break
+        if len(feature_idx) == 0:
+            feature_idx.append(i)
+            continue
+        corr = [
+            stats.pearsonr(datasets[0][:, i], datasets[0][:, idx])[0] < int_thresh
+            for idx in feature_idx]
+        if all(corr):
+            feature_idx.append(i)
+
+    # By raw score, raw score and diversity
+    return temp_order, feature_idx
+
+
+class preclass:
+    def __init__(self, sample, pca=None):
+        self.sample = sample
+        self.pca = pca
+
+    def transform(self, X):
+        out = X
+        if self.pca is not None:
+            out = self.pca.transform(out)
+        out = out - self.sample.mean()
+        out = out / self.sample.std()
+        return out
+
+    def inverse_transform(self, X):
+        out = X
+        out = out * self.sample.std()
+        out = out + self.sample.mean()
+        if self.pca is not None:
+            out = self.pca.inverse_transform(out)
+        return out
 
 
 class SimpleDualEncoder(nn.Module):

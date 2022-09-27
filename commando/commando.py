@@ -7,21 +7,23 @@ import numpy as np
 from scipy import stats
 from scipy.optimize import linear_sum_assignment
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.neighbors import KNeighborsClassifier
 import torch
 import torch.nn as nn  # noqa
 import torch.optim as optim
 import unioncom.UnionCom as uc
+import umap
 from unioncom.utils import (
     geodesic_distances,
     init_random_seed,
     joint_probabilities,
 )
 
-from .model import edModel
+from .model import edModel, edModelVar
 from .nn_funcs import gw_loss, knn_dist, knn_sim, nlma_loss, uc_loss  # noqa
-from .utilities import time_logger, uc_visualize
+from .utilities import time_logger, uc_visualize, identity, preclass
 
 
 class ComManDo(uc.UnionCom):
@@ -39,12 +41,14 @@ class ComManDo(uc.UnionCom):
         match_result=None,
         PF_Ratio=1,
         corr_method='unioncom',
-        dist_method='cosine',
+        dist_method='euclidean',
         in_place=False,
         loss_weights=None,
-        model_class=edModel,
+        model_pca='pca',
+        model_class=edModelVar,
         pca_dim=None,
         batch_step=False,
+        use_f_tilde=True,
         use_early_stop=True,
         min_increment=1e-8,
         max_steps_without_increment=500,
@@ -58,10 +62,12 @@ class ComManDo(uc.UnionCom):
         self.dist_method = dist_method
         self.in_place = in_place
         self.loss_weights = loss_weights
+        self.model_pca = model_pca
         self.model_class = model_class
         self.pca_dim = pca_dim
 
         self.batch_step = batch_step
+        self.use_f_tilde = use_f_tilde
         self.use_early_stop = use_early_stop
         self.min_increment = min_increment
         self.max_steps_without_increment = max_steps_without_increment
@@ -75,6 +81,8 @@ class ComManDo(uc.UnionCom):
             kwargs['project_mode'] = 'commando'
         if 'log_pd' not in kwargs:
             kwargs['log_pd'] = 500
+        if 'lr' not in kwargs:
+            kwargs['lr'] = 1e-3
 
         super().__init__(**kwargs)
 
@@ -102,6 +110,7 @@ class ComManDo(uc.UnionCom):
             raise Exception(
                 "ComManDo is only compatible with integration_type: 'MultiOmics'."
             )
+        assert self.model_pca in ('pca', 'umap')
 
         time = time_logger()
         init_random_seed(self.manual_seed)
@@ -126,11 +135,17 @@ class ComManDo(uc.UnionCom):
             self.col.append(np.shape(self.dataset[i])[1])
 
         # Compute the distance matrix
-        self.compute_distances(save_dist=
-            ( (self.match_result is None) and (self.project_mode not in ['tsne']) ))
+        self.compute_distances(save_dist=(
+            self.project_mode in ['tsne'] or (
+                self.match_result is None
+                and self.use_f_tilde
+            )
+        ))
         time.log('Distance')
 
         # Find correspondence between samples
+        if not self.use_f_tilde:
+            self.match_result = [np.zeros([d.shape[0] for d in self.dataset])]
         self.match_result = self.match() if self.match_result is None else self.match_result
         pairs_x = []
         pairs_y = []
@@ -401,17 +416,25 @@ class ComManDo(uc.UnionCom):
             pca_inv_list = []
             for dim, data in zip(self.pca_dim, self.dataset):
                 if dim is not None:
-                    # Maybe allow pre-calculated PCA as input?
-                    # Could use subsample of data for training, all for PCA
                     assert min(*data.shape) >= dim, (
                         f'PCA dim must be lower than {min(*data.shape)}, found {dim}')
-                    pca = PCA(n_components=dim).fit(data)
-                    pca_list.append(pca.transform)
-                    pca_inv_list.append(pca.inverse_transform)
+                    if self.model_pca == 'pca':
+                        pca = PCA(n_components=dim)
+                    elif self.model_pca == 'umap':
+                        pca = umap.UMAP(n_components=dim)
+                    elif self.model_pca == 'tsne':
+                        # No transform method
+                        pca = TSNE(n_components=dim, method='exact')
+                    sample = pca.fit_transform(data)
+                    pre = preclass(sample, pca=pca)
+                    pca_list.append(pre.transform)
+                    pca_inv_list.append(pre.inverse_transform)
                 else:
-                    pca_list.append(lambda x: x)
-                    pca_inv_list.append(lambda x: x)
+                    pre = preclass(data)
+                    pca_list.append(pre.transform)
+                    pca_inv_list.append(pre.inverse_transform)
             # Python bug?  Doesn't work, overwrites pca
+            # NOTE: Just overwrites the pca instance in lambda
             # pca_list = [lambda x: pca.transform(x) for pca in pca_list]
 
             # Transform datasets (Maybe find less destructive way?)
@@ -427,7 +450,7 @@ class ComManDo(uc.UnionCom):
                 preprocessing=pca_list,
                 preprocessing_inverse=pca_inv_list,
             ).to(self.device))
-        optimizer = optim.AdamW(self.model.parameters(), lr=self.lr)
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         def sim_diff_func(a, b):
             if self.dist_method == 'cosine':
@@ -438,14 +461,14 @@ class ComManDo(uc.UnionCom):
                 )
                 # return sim, 1-sim
                 diff = 1 - sim
-                sim[sim < 0] = 0
-                diff[diff < 0] = 0
+                # sim[sim < 0] = 0
+                # diff[diff < 0] = 0
                 return sim, diff
 
             elif self.dist_method == 'euclidean':
                 # Euclidean Distance
                 dist = torch.cdist(a, b, p=2)
-                dist = dist / dist.max()
+                # dist = dist / dist.max()
                 sim = 1 / (1+dist)
                 sim = 2 * sim - 1  # This one scaling line makes the entire algorithm work
                 sim = sim / sim.max()
@@ -505,11 +528,12 @@ class ComManDo(uc.UnionCom):
                 corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F
 
                 # Run model
-                embedded, reconstructed, mus, stds = self.model(*data, corr=corr)
+                embedded, combined, reconstructed, mus, stds = self.model(*data, corr=corr)
                 timer.log('Run model')
 
                 # Loss bookkeeping
                 losses = []
+                losses_names = []
 
                 # # ELBO (VAE)
                 # # kl
@@ -542,39 +566,82 @@ class ComManDo(uc.UnionCom):
                 # losses.append(elbo)
                 # timer.log('ELBO')
 
-                # MSE Reconstruction error (AE)
-                reconstruction_diff = sum(
+                # KL Loss (VAE)
+                kl_loss = sum(
+                    -.5 * torch.sum(
+                        1
+                        + torch.log(stds[i])
+                        - torch.square(mus[i])
+                        - torch.square(stds[i])
+                    )  / data[i].shape[0]
+                    for i in range(self.dataset_num)
+                )
+                # https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
+                c = self.epoch_DNN / 2  # Midpoint
+                kl_anneal = 1 / ( 1 + np.exp( - 5 * (epoch - c) / c ) )
+                losses.append(1e-3 * kl_anneal * kl_loss)
+                losses_names.append('KL')
+                timer.log('KL Loss')
+                # asdf revise early stop for late-increasing losses
+
+                # MSE Reconstruction error (AE/VAE)
+                reconstruction_loss = sum(
                     (reconstructed[i] - data[i]).square().sum() / prod(data[i].shape)
                     for i in range(self.dataset_num)
-                ) / self.dataset_num
-                reconstruction_loss = reconstruction_diff
+                )
                 losses.append(reconstruction_loss)
-                timer.log('Reconstruction loss')
+                losses_names.append('Rec')
+                timer.log('Reconstruction Loss')
 
                 # Difference
-                csim, cdiff = sim_diff_func(embedded[0], embedded[1])
-                csim0, cdiff0 = sim_diff_func(embedded[0], embedded[0])
-                csim1, cdiff1 = sim_diff_func(embedded[1], embedded[1])
+                # csim, cdiff = sim_diff_func(embedded[0], embedded[1])
+                # csim0, cdiff0 = sim_diff_func(embedded[0], embedded[0])
+                # csim1, cdiff1 = sim_diff_func(embedded[1], embedded[1])
+                cosim0, codiff0 = sim_diff_func(embedded[0], combined[0])
+                cosim1, codiff1 = sim_diff_func(embedded[1], combined[1])
+                # comsim1, comdiff1 = sim_diff_func(combined[0], combined[1])
                 timer.log('Difference calculation')
 
-                # Alignment loss
-                if P.absolute().sum() != 0:
-                    weighted_P_cdiff = cdiff * P
-                    alignment_loss = weighted_P_cdiff.absolute().sum() / P.absolute().sum()
-                    losses.append(alignment_loss)
-                    timer.log('Aligned loss')
+                # Cosine Loss (asdf update with P)
+                cosine_loss = torch.diag(
+                    codiff0 / data[0].shape[0]
+                    + codiff1 / data[1].shape[0]).sum()
+                losses.append(cosine_loss)
+                losses_names.append('CosSim')
+                timer.log('Cosine Loss')
 
-                # Cross loss using F
-                weighted_F_cdiff = cdiff * F
-                cross_loss = weighted_F_cdiff.absolute().sum() / F.absolute().sum()
-                losses.append(cross_loss)
-                timer.log('F-cross loss')
+                # F Reconstruction Loss
+                F_est = torch.square(
+                    combined[0] - torch.mm(F, combined[1])
+                ).sum() / prod(combined[0].shape)
+                losses.append(F_est)
+                losses_names.append('F')
+                timer.log('F Loss')
 
-                # Inverse cross loss using F
-                weighted_F_inv_csim = csim * F_inv
-                inv_cross_loss = weighted_F_inv_csim.absolute().sum() / F_inv.absolute().sum()
-                losses.append(inv_cross_loss)
-                timer.log('F-inv-cross loss')
+                # # Cross Loss
+                # cross_loss = comdiff1 * F
+                # cross_loss = cross_loss.sum() / prod(F.shape)
+                # losses.append(cross_loss)
+                # timer.log('Cross Loss')
+
+                # # Alignment loss
+                # if P.absolute().sum() != 0:
+                #     weighted_P_cdiff = cdiff * P
+                #     alignment_loss = weighted_P_cdiff.absolute().sum() / P.absolute().sum()
+                #     losses.append(alignment_loss)
+                #     timer.log('Aligned loss')
+                #
+                # # Cross loss using F
+                # weighted_F_cdiff = cdiff * F
+                # cross_loss = weighted_F_cdiff.absolute().sum() / F.absolute().sum()
+                # losses.append(cross_loss)
+                # timer.log('F-cross loss')
+                #
+                # # Inverse cross loss using F
+                # weighted_F_inv_csim = csim * F_inv
+                # inv_cross_loss = weighted_F_inv_csim.absolute().sum() / prod(F.shape)  # F_inv.absolute().sum()
+                # losses.append(inv_cross_loss)
+                # timer.log('F-inv-cross loss')
 
                 # Record loss
                 if self.loss_weights is not None:
@@ -609,12 +676,13 @@ class ComManDo(uc.UnionCom):
             # Debug Printing
             if (epoch+1) % 100 == 0 and self.debug:
                 if self.loss_weights is not None:
-                    print([lo.detach().cpu() * wt for lo, wt in zip(losses, self.loss_weights)])
+                    print('  '.join([f'{losses_names[i]}: {lo.detach().cpu() * wt:.4f}'
+                                     for i, (lo, wt) in enumerate(zip(losses, self.loss_weights))]))
                 else:
-                    print([lo.detach().cpu() for lo in losses])
+                    print('  '.join([f'{losses_names[i]}: {lo.detach().cpu():.4f}'
+                                     for i, lo in enumerate(losses)]))
 
             # Early stopping
-
             if self.batch_step:
                 active_loss = best_batch_loss
             else:
@@ -639,20 +707,25 @@ class ComManDo(uc.UnionCom):
         # timer.aggregate()
         return integrated_data
 
-    def modal_predict(self, data, modality, reverse_pre=True):
+    def modal_predict(self, data, modality):
         """Predict the opposite modality from dataset ``data`` in modality ``modality``"""
         assert self.model is not None, 'Model must be trained before modal prediction.'
 
         to_modality = (modality + 1) % self.dataset_num
-        pre_function = self.model.preprocessing[modality]
-        out = self.model.decoders[to_modality](
-            self.model.encoders[modality](
-                torch.tensor(pre_function(data)).float()
-            )).detach().cpu().numpy()
-        if reverse_pre:
-            post_function = self.model.preprocessing_inverse[to_modality]
-            out = post_function(out)
-        return out
+        return self.model.impute(data, compose=[modality, to_modality])
+
+    def transform(self, dataset, corr=None, pre_transformed=False):
+        """Transform data using an already trained model"""
+        if corr is None:
+            if dataset[0].shape[0] == dataset[1].shape[0]:
+                corr = torch.eye(dataset[0].shape[0])
+            else:
+                corr = torch.zeros((dataset[0].shape[0], dataset[1].shape[0]))
+        if not pre_transformed:
+            dataset = [self.model.preprocessing[i](dataset[i]) for i in range(len(dataset))]
+        dataset = [torch.Tensor(d) for d in dataset]
+        integrated = self.model(*dataset, corr=corr)[0]
+        return [d.detach().cpu().numpy() for d in integrated]
 
     def compute_distances(self, save_dist=True):
         """Helper function to compute distances for each dataset"""
@@ -710,7 +783,7 @@ class ComManDo(uc.UnionCom):
         distance_metric=lambda x: pairwise_distances(x, metric='euclidean'),
     ):
         """Test fraction of samples closer than the true match"""
-        # ASDF: 3+ datasets and non-aligned data
+        # ASDDF: 3+ datasets and non-aligned data
         assert len(integrated_data) == 2, 'Two datasets are supported for FOSCTTM'
 
         if distance_metric is None:
@@ -737,7 +810,7 @@ class ComManDo(uc.UnionCom):
         verbose=True,
     ):
         """Test average distance by label"""
-        # ASDF: 3+ datasets
+        # ASDDF: 3+ datasets
         assert len(integrated_data) == 2, 'Two datasets are supported for ``label_dist``'
 
         if distance_metric is None:
@@ -778,3 +851,10 @@ class ComManDo(uc.UnionCom):
     def Visualize(self, data, integrated_data, datatype=None, mode=None):
         """In-class API for modified visualization function"""
         uc_visualize(data, integrated_data, datatype=datatype, mode=mode)
+
+    def save_model(self, f):
+        torch.save(self.model, f)
+
+    def load_model(self, f):
+        self.model = torch.load(f)
+        self.dataset_num = self.model.num_modalities
