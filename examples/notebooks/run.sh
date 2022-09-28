@@ -1,3 +1,4 @@
+jupyter nbconvert --execute --to notebook --inplace scGEM.ipynb && \
 jupyter nbconvert --execute --to notebook --inplace MMD-MA.ipynb && \
 jupyter nbconvert --execute --to notebook --inplace scMNC-Visual.ipynb && \
 jupyter nbconvert --execute --to notebook --inplace brainchromatin.ipynb && \

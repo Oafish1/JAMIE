@@ -49,7 +49,7 @@ class ComManDo(uc.UnionCom):
         pca_dim=None,
         batch_step=False,
         use_f_tilde=True,
-        use_early_stop=True,
+        use_early_stop=False,
         min_increment=1e-8,
         max_steps_without_increment=500,
         debug=False,
@@ -75,14 +75,16 @@ class ComManDo(uc.UnionCom):
         self.debug = debug
 
         # Default changes
-        # if 'distance_mode' not in kwargs:
-        #     kwargs['distance_mode'] = 'spearman'
-        if 'project_mode' not in kwargs:
-            kwargs['project_mode'] = 'commando'
-        if 'log_pd' not in kwargs:
-            kwargs['log_pd'] = 500
-        if 'lr' not in kwargs:
-            kwargs['lr'] = 1e-3
+        defaults = {
+            'project_mode': 'commando',
+            'log_pd': 500,
+            'lr': 1e-3,
+            'epoch_DNN': 2500,
+            'log_DNN': 500,
+        }
+        for k, v in defaults.items():
+            if k not in kwargs:
+                kwargs[k] = v
 
         super().__init__(**kwargs)
 

@@ -371,7 +371,7 @@ class SingleModel(nn.Module):
 
 def predict_nn(source, target, val=None, epochs=200, batch_size=32):
     """Predict modality using a simple NN"""
-    model = SimpleDualModel(source.shape[1], target.shape[1])
+    model = SimpleCommonDualModel(source.shape[1], target.shape[1])
     optimizer = torch.optim.AdamW(model.parameters())
     criterion = nn.MSELoss()
     batches = int(len(source)/batch_size)
@@ -430,43 +430,72 @@ def tune_cm(cm, dataset, types, wt_size, num_search=20):
     return best_wt, best_cm_data
 
 
-def sort_by_interest(datasets, int_thresh=.5, limit=20):
+def sort_by_interest(datasets, int_thresh=.8, limit=20):
     """Assesses datasets (real, imputed) and returns interesting indexes"""
     if limit is None:
         limit = datasets[0].shape[1]
+
     # Score by entropy and imputation performance
-    entropy_arr = np.array([
-        stats.entropy(f) if not np.isnan(stats.entropy(f)) else -1
-        for f in datasets[0].T])
-    entropy_arr[np.isnan(entropy_arr)] = -1
-    entropy_sort = np.argsort(entropy_arr)[::-1]
+    # Distribution
+    X = np.linspace(0, 1, 1000)
+    distribution_true = [np.histogram(datasets[0][:, i], bins=X)[0] for i in range(datasets[0].shape[1])]
+    # distribution_true = [stats.rv_histogram(d) for d in distribution_true]
+    # distribution_true = [[d.pdf(x) for x in X] for d in distribution_true]
+    # distribution_true = [d / sum(d) for d in distribution_true]
+    distribution_pred = [np.histogram(datasets[1][:, i], bins=X)[0] for i in range(datasets[0].shape[1])]
+    # distribution_pred = [stats.rv_histogram(d) for d in distribution_pred]
+    # distribution_pred = [[d.pdf(x) for x in X] for d in distribution_pred]
+    # distribution_pred = [d / sum(d) for d in distribution_pred]
+
+    # Entropy
+    entropy_arr = np.array([stats.entropy(t) for t in distribution_true])
+    entropy_arr[np.isnan(entropy_arr)] = 0
+    entropy_arr[np.isinf(entropy_arr)] = 0
+
+    # Corr
     corr_arr = np.array([
         stats.pearsonr(datasets[0][:, i], datasets[1][:, i])[0]
         for i in range(datasets[0].shape[1])])
-    corr_arr[np.isnan(corr_arr)] = -2
-    corr_sort = np.argsort(corr_arr)[::-1]
-    temp_order = np.argsort(
-        np.array([
-            np.argwhere(entropy_sort==i)[0][0]
-            + np.argwhere(corr_sort==i)[0][0]
-            for i in range(datasets[0].shape[1])
-    ]))
+    corr_arr[np.isnan(corr_arr)] = -1
+
+    # # MSE
+    # dist_arr = np.array([
+    #     np.mean(np.sum((datasets[0][:, i] - datasets[1][:, i])**2))
+    #     for i in range(datasets[0].shape[1])])
+    # dist_arr[np.isnan(dist_arr)] = np.inf
+
+    # # KL
+    # kl_arr = np.array([stats.entropy(t, p)
+    #     for t, p in zip(distribution_true, distribution_pred)])
+    # kl_arr[np.isnan(kl_arr)] = np.inf
+
+    # # KS
+    # ks_arr = np.array([stats.kstest(p, t)[0]
+    #     for t, p in zip(distribution_true, distribution_pred)])
+    # ks_arr[np.isnan(ks_arr)] = 1
+
+    # Order
+    temp_order = np.argsort(5e-2*entropy_arr + corr_arr)[::-1]
+    # temp_order = np.argsort(ks_arr - 5e-2*np.log(entropy_arr))
 
     # Filter for interest and diversity
     feature_idx = []
     for i in temp_order:
-        if len(feature_idx) > limit:
+        if len(feature_idx) >= limit:
             break
         if len(feature_idx) == 0:
             feature_idx.append(i)
             continue
         corr = [
-            stats.pearsonr(datasets[0][:, i], datasets[0][:, idx])[0] < int_thresh
+            stats.pearsonr(datasets[0][:, i], datasets[0][:, idx])[0]
             for idx in feature_idx]
-        if all(corr):
+        corr = [c for c in corr if not np.isnan(c)]
+        if all(corr) or len(corr) == 0:
             feature_idx.append(i)
 
     # By raw score, raw score and diversity
+    # print(entropy_arr[temp_order])
+    # print(corr_arr[temp_order])
     return temp_order, feature_idx
 
 

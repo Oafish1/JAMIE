@@ -1219,6 +1219,10 @@ def plot_distribution_alone(
     **kwargs,
 ):
     datasets = [np.array(d) for d in datasets]
+    fnames = [
+        fnames[i]
+        if fnames[i] is not None else [f'Feature {i}' for i in range(len(df.columns))]
+        for i in range(2)]
     if gcf is None:
         gcf = plt.gcf()
 
@@ -1267,9 +1271,9 @@ def plot_distribution_alone(
         )
         for j in range(feature_limit-1):
             ax.axvline(x=j+.5, color='black', linestyle='--')
-        ax.set_xticks([])
         ax.set_xlabel(None)
         if i == 0:
+            ax.set_xticks([])
             ax.set_title(f'Sample Feature Distributions ({title})')
             # ax.axhline(y=ax.get_ylim()[0], color='black', linestyle='-', linewidth=5)
         else:

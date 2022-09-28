@@ -135,11 +135,11 @@ class edModelVar(nn.Module):
         self.num_modalities = len(input_dim)
         # For outputting the model with preprocessing included
         if preprocessing is None:
-            self.preprocessing = self.num_modalities * [lambda x: x]
+            self.preprocessing = self.num_modalities * [identity]
         else:
             self.preprocessing = preprocessing
         if preprocessing_inverse is None:
-            self.preprocessing_inverse = self.num_modalities * [lambda x: x]
+            self.preprocessing_inverse = self.num_modalities * [identity]
         else:
             self.preprocessing_inverse = preprocessing_inverse
 
