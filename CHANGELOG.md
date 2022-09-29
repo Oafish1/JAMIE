@@ -1,9 +1,10 @@
-# 3.8.3
+# 4.0.0
 - Add `adjustText` for cleaner text notations
 - Add `batch_step` option for typical AE iteration
 - Add more SHAP visualizations
 - Add outlier detection utility
 - Add scDART
+- Added auto-amending kwarg `pca_dim`
 - Added BABEL datasets
 - Adjusted evaluation figure text size
 - Applied outlier detection to `plot_integrated`
@@ -12,6 +13,7 @@
 - Changed sampling logic on distribution similarity calculation
 - Fix bug for non-aligned datasets in `commando` module
 - Fix SVD solver option in automated PCA
+- Implement full VAE
 - New interesting feature finding algorithm
 - Stylistic changes in `evaluation`
 - Various visualizations in `evaluation` module

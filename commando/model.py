@@ -146,7 +146,7 @@ class edModelVar(nn.Module):
         self.encoders = []
         for i in range(self.num_modalities):
             self.encoders.append(nn.Sequential(
-                # nn.BatchNorm1d(input_dim[i]),
+                # UnionCom Like
                 nn.Linear(input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
                 nn.LeakyReLU(),
@@ -154,22 +154,33 @@ class edModelVar(nn.Module):
                 nn.Linear(2*input_dim[i], input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
                 nn.LeakyReLU(),
+
+                # # BABEL Like
+                # nn.Linear(input_dim[i], 2*output_dim),
+                # nn.BatchNorm1d(2*output_dim),
+                # nn.PReLU(),
             ))
         self.encoders = nn.ModuleList(self.encoders)
 
+        intermediate_dim = []
+        for i in range(self.num_modalities):
+            intermediate_dim.append(input_dim[i])  # UnionCom Like
+            # intermediate_dim.append(2*output_dim)  # BABEL Like
+
         self.fc_mus = []
         for i in range(self.num_modalities):
-            self.fc_mus.append(nn.Linear(input_dim[i], output_dim))
+            self.fc_mus.append(nn.Linear(intermediate_dim[i], output_dim))
         self.fc_mus = nn.ModuleList(self.fc_mus)
 
         self.fc_vars = []
         for i in range(self.num_modalities):
-            self.fc_vars.append(nn.Linear(input_dim[i], output_dim))
+            self.fc_vars.append(nn.Linear(intermediate_dim[i], output_dim))
         self.fc_vars = nn.ModuleList(self.fc_vars)
 
         self.decoders = []
         for i in range(self.num_modalities):
             self.decoders.append(nn.Sequential(
+                # UnionCom Like
                 nn.Linear(output_dim, input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
                 nn.LeakyReLU(),
@@ -179,8 +190,17 @@ class edModelVar(nn.Module):
                 nn.LeakyReLU(),
 
                 nn.Linear(2*input_dim[i], input_dim[i]),
-                nn.BatchNorm1d(input_dim[i]),
-                nn.LeakyReLU(),
+                # nn.BatchNorm1d(input_dim[i]),
+                # nn.LeakyReLU(),
+
+                # # BABEL Like
+                # nn.Linear(output_dim, 2*output_dim),
+                # nn.BatchNorm1d(2*output_dim),
+                # nn.PReLU(),
+                #
+                # nn.Linear(2*output_dim, input_dim[i]),
+                # nn.BatchNorm1d(input_dim[i]),
+                # nn.PReLU(),
             ))
         self.decoders = nn.ModuleList(self.decoders)
 

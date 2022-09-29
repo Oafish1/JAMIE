@@ -7,6 +7,7 @@ import numpy as np
 from scipy import stats
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+from sklearn.neighbors import KNeighborsRegressor
 import torch
 import torch.nn as nn
 import umap
@@ -369,6 +370,14 @@ class SingleModel(nn.Module):
         return criterion(logits, Y[1])
 
 
+def predict_knn(input, output, val=None, k=5):
+    knn = KNeighborsRegressor(n_neighbors=k)
+    knn.fit(input, output)
+    if val is not None:
+        return knn.predict(val)
+    return knn.predict(input)
+
+
 def predict_nn(source, target, val=None, epochs=200, batch_size=32):
     """Predict modality using a simple NN"""
     model = SimpleCommonDualModel(source.shape[1], target.shape[1])
@@ -500,28 +509,30 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20):
 
 
 class preclass:
-    def __init__(self, sample, pca=None):
+    def __init__(self, sample, pca=None, axis=None):
         self.sample = sample
         self.pca = pca
+        self.axis = axis  # Generally None or 0, depending on if feature magnitude matters
 
     def transform(self, X):
         out = X
         if self.pca is not None:
             out = self.pca.transform(out)
-        out = out - self.sample.mean()
-        out = out / self.sample.std()
+        out = out - self.sample.mean(self.axis)
+        out = out / self.sample.std(self.axis)
+        out[np.isnan(out)] = 0
         return out
 
     def inverse_transform(self, X):
         out = X
-        out = out * self.sample.std()
-        out = out + self.sample.mean()
+        out = out * self.sample.std(self.axis)
+        out = out + self.sample.mean(self.axis)
         if self.pca is not None:
             out = self.pca.inverse_transform(out)
         return out
 
 
-class SimpleDualEncoder(nn.Module):
+class SimpleJAMIEModel(nn.Module):
     """Small encoder-decoder model"""
     def __init__(self, input_dim, output_dim):
         super().__init__()

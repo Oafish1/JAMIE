@@ -20,7 +20,7 @@ import umap
 
 from .commando import ComManDo
 from .utilities import (
-    ensure_list, outliers, predict_nn, set_yticks, sort_by_interest, SimpleDualEncoder)
+    ensure_list, outliers, predict_nn, set_yticks, sort_by_interest, SimpleJAMIEModel)
 
 
 def test_partial(
@@ -693,7 +693,7 @@ class generate_figure():
                 # Simple model
                 if not skip_simple:
                     simple_cm = ComManDo(
-                        model_class=SimpleDualEncoder, output_dim=simple_num_features)
+                        model_class=SimpleJAMIEModel, output_dim=simple_num_features)
                     with contextlib.redirect_stdout(None):
                         simple_cm.fit_transform(dataset=dataset)
                     average_weights = (
@@ -1037,6 +1037,7 @@ def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
         ax=ax,
         palette=[c for i, c in enumerate(colors) if i not in exclude] if colors is not None else None,
         # edgecolor='black',
+        marker='s',
         s=200,
         alpha=1)
     ax.set_xlabel('FOSCTTM')
@@ -1180,7 +1181,7 @@ def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot
     ax.text(.05, .9, gre, ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
     les = sum(np.greater(feat[0], feat[1]))
     ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
-    n = len(feat[0])
+    n = gre + les  # len(feat[0]) doesn't account for NAs
     # Null hypothesis - equal methods (two-tailed)
     # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
     p_value = sum(2**(math.log(math.comb(n, i), 2) - n) for i in range(n+1) if i >= gre)

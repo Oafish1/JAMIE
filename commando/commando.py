@@ -53,6 +53,7 @@ class ComManDo(uc.UnionCom):
         min_increment=1e-8,
         max_steps_without_increment=500,
         debug=False,
+        log_debug=100,
         **kwargs
     ):
         self.P = P
@@ -73,6 +74,7 @@ class ComManDo(uc.UnionCom):
         self.max_steps_without_increment = max_steps_without_increment
 
         self.debug = debug
+        self.log_debug = log_debug
 
         # Default changes
         defaults = {
@@ -413,38 +415,44 @@ class ComManDo(uc.UnionCom):
         # self.batch_size = 177
 
         timer = time_logger()
+        pca_list = []
+        pca_inv_list = []
         if self.pca_dim is not None:
-            pca_list = []
-            pca_inv_list = []
             for dim, data in zip(self.pca_dim, self.dataset):
                 if dim is not None:
-                    assert min(*data.shape) >= dim, (
-                        f'PCA dim must be lower than {min(*data.shape)}, found {dim}')
+                    if min(*data.shape) < dim:
+                        warnings.warn(
+                            f'PCA dim must be lower than {min(*data.shape)}, found {dim}, '
+                            f'adjusting to compensate.')
+                        dim = min(*data.shape)
                     if self.model_pca == 'pca':
                         pca = PCA(n_components=dim)
                     elif self.model_pca == 'umap':
+                        # Inverse will sometimes crash kernel
                         pca = umap.UMAP(n_components=dim)
                     elif self.model_pca == 'tsne':
                         # No transform method
                         pca = TSNE(n_components=dim, method='exact')
                     sample = pca.fit_transform(data)
                     pre = preclass(sample, pca=pca)
-                    pca_list.append(pre.transform)
-                    pca_inv_list.append(pre.inverse_transform)
                 else:
-                    pre = preclass(data)
-                    pca_list.append(pre.transform)
-                    pca_inv_list.append(pre.inverse_transform)
+                    pre = preclass(data, axis=0)
+                pca_list.append(pre.transform)
+                pca_inv_list.append(pre.inverse_transform)
             # Python bug?  Doesn't work, overwrites pca
             # NOTE: Just overwrites the pca instance in lambda
             # pca_list = [lambda x: pca.transform(x) for pca in pca_list]
-
-            # Transform datasets (Maybe find less destructive way?)
-            self.dataset = [pca_transform(x) for pca_transform, x in zip(pca_list, self.dataset)]
-            self.col = [x.shape[1] for x in self.dataset]
         else:
-            pca_list = None
-            pca_inv_list = None
+            for data in self.dataset:
+                pre = preclass(data, axis=0)
+                pca_list.append(pre.transform)
+                pca_inv_list.append(pre.inverse_transform)
+
+        # Transform datasets (Maybe find less destructive way?)
+        self.dataset = [pca_transform(x) for pca_transform, x in zip(pca_list, self.dataset)]
+        self.col = [x.shape[1] for x in self.dataset]
+
+        # Create model
         self.model = (
             self.model_class(
                 self.col,
@@ -671,18 +679,19 @@ class ComManDo(uc.UnionCom):
                 optimizer.zero_grad()
                 timer.log('Step')
 
-            # CLI Printing
-            if (epoch+1) % self.log_DNN == 0:
-                print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{epoch_loss.data.item():4f}')
-
             # Debug Printing
-            if (epoch+1) % 100 == 0 and self.debug:
+            if (epoch+1) % self.log_debug == 0 and self.debug:
                 if self.loss_weights is not None:
-                    print('  '.join([f'{losses_names[i]}: {lo.detach().cpu() * wt:.4f}'
-                                     for i, (lo, wt) in enumerate(zip(losses, self.loss_weights))]))
+                    print(f'Epoch: {epoch+1:d} - '
+                        + '  '.join([f'{losses_names[i]}: {lo.detach().cpu() * wt:.4f}'
+                            for i, (lo, wt) in enumerate(zip(losses, self.loss_weights))]))
                 else:
                     print('  '.join([f'{losses_names[i]}: {lo.detach().cpu():.4f}'
                                      for i, lo in enumerate(losses)]))
+
+            # CLI Printing
+            if (epoch+1) % self.log_DNN == 0:
+                print(f'epoch:[{epoch+1:d}/{self.epoch_DNN}]: loss:{epoch_loss.data.item():4f}')
 
             # Early stopping
             if self.batch_step:
@@ -719,6 +728,7 @@ class ComManDo(uc.UnionCom):
     def transform(self, dataset, corr=None, pre_transformed=False):
         """Transform data using an already trained model"""
         if corr is None:
+            # Doesn't actually do anything
             if dataset[0].shape[0] == dataset[1].shape[0]:
                 corr = torch.eye(dataset[0].shape[0])
             else:
@@ -728,6 +738,14 @@ class ComManDo(uc.UnionCom):
         dataset = [torch.Tensor(d) for d in dataset]
         integrated = self.model(*dataset, corr=corr)[0]
         return [d.detach().cpu().numpy() for d in integrated]
+
+    def transform_one(self, dataset, i, pre_transformed=False):
+        """Transform data using an already trained model"""
+        if not pre_transformed:
+            dataset = self.model.preprocessing[i](dataset)
+        dataset = torch.Tensor(dataset)
+        integrated = self.model.encoders[i](dataset)
+        return integrated.detach().cpu().numpy()
 
     def compute_distances(self, save_dist=True):
         """Helper function to compute distances for each dataset"""
@@ -845,7 +863,7 @@ class ComManDo(uc.UnionCom):
             if label1 == label2:
                 count += 1
         acc = count / len(datatype[0])
-        print(f"label transfer accuracy: {acc}")
+        # print(f"label transfer accuracy: {acc}")
         if return_k:
             return acc, k
         return acc
