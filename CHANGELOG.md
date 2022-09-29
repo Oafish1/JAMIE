@@ -14,6 +14,7 @@
 - Fix bug for non-aligned datasets in `commando` module
 - Fix SVD solver option in automated PCA
 - Implement full VAE
+- Implemented saving and loading models
 - New interesting feature finding algorithm
 - Stylistic changes in `evaluation`
 - Various visualizations in `evaluation` module
