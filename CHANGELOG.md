@@ -1,3 +1,6 @@
+# 4.1.1
+- Small fix with label formatting
+
 # 4.1.0
 - Add gradient clipping
 - Added `plot_impact` to `evaluation` module
