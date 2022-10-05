@@ -1,4 +1,6 @@
 # 4.1.1
+- Added `feature_dict` argument to `plot_distribution_alone` for custom `xticks`
+- Additional outlier protection for `plot_distribution_alone` visualizations
 - Small fix with label formatting
 
 # 4.1.0

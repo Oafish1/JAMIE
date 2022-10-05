@@ -13,13 +13,32 @@ import torch.nn as nn
 import umap
 
 
-def outliers(x, threshold=3.5):
-    """Detect outliers, similar to https://stackoverflow.com/a/11886564"""
-    med = np.median(x, axis=0)
-    d = np.linalg.norm(x - med, ord=2, axis=1)
-    med_d = np.median(d)
-    mod_z = .6745 * d / med_d
-    return mod_z > threshold
+def outliers(x, leniency=1.5, aggregate=False, return_limits=False, verbose=False):
+    """Detect outliers"""
+    # https://stackoverflow.com/a/11886564
+    # , threshold=3.5
+    # med = np.median(x, axis=0)
+    # d = np.linalg.norm(x - med, ord=2, axis=1)
+    # med_d = np.median(d)
+    # mod_z = .6745 * d / med_d
+    # return mod_z > threshold
+
+    # Box and whisker type
+    Q1 = np.percentile(x, 25, axis=0, keepdims=True)
+    Q2 = np.percentile(x, 50, axis=0, keepdims=True)
+    Q3 = np.percentile(x, 75, axis=0, keepdims=True)
+    span = Q3 - Q1
+    lower_bound = Q1 - leniency * span
+    upper_bound = Q3 + leniency * span
+    if verbose:
+        print(f'Lower: {lower_bound}')
+        print(f'Upper: {upper_bound}')
+    result = (x < lower_bound) + (x > upper_bound)
+    if aggregate:
+        result = np.prod(result, axis=1)
+    if return_limits:
+        return result, (lower_bound, upper_bound, span)
+    return result
 
 
 def identity(x):
@@ -439,19 +458,33 @@ def tune_cm(cm, dataset, types, wt_size, num_search=20):
     return best_wt, best_cm_data
 
 
-def sort_by_interest(datasets, int_thresh=.8, limit=20):
+def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
     """Assesses datasets (real, imputed) and returns interesting indexes"""
     if limit is None:
         limit = datasets[0].shape[1]
 
     # Score by entropy and imputation performance
     # Distribution
-    X = np.linspace(0, 1, 1000)
-    distribution_true = [np.histogram(datasets[0][:, i], bins=X)[0] for i in range(datasets[0].shape[1])]
+    # X = np.linspace(0, 1, 1000)
+    if remove_outliers:
+        dataset0_features = [
+            datasets[0][~outliers(datasets[0][:, i]), i]
+            for i in range(datasets[0].shape[1])]
+    else:
+        dataset0_features = [datasets[0][:, i] for i in range(datasets[0].shape[1])]
+    distribution_true = [
+        np.histogram(d, bins=np.linspace(np.min(d), np.max(d), 100))[0] for d in dataset0_features
+    ]
     # distribution_true = [stats.rv_histogram(d) for d in distribution_true]
     # distribution_true = [[d.pdf(x) for x in X] for d in distribution_true]
     # distribution_true = [d / sum(d) for d in distribution_true]
-    distribution_pred = [np.histogram(datasets[1][:, i], bins=X)[0] for i in range(datasets[0].shape[1])]
+    distribution_pred = [
+        np.histogram(
+            datasets[1][:, i],
+            bins=np.linspace(np.min(datasets[1][:, i]),
+            np.max(datasets[1][:, i]), 100))[0]
+            for i in range(datasets[0].shape[1])
+    ]
     # distribution_pred = [stats.rv_histogram(d) for d in distribution_pred]
     # distribution_pred = [[d.pdf(x) for x in X] for d in distribution_pred]
     # distribution_pred = [d / sum(d) for d in distribution_pred]
@@ -484,7 +517,7 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20):
     # ks_arr[np.isnan(ks_arr)] = 1
 
     # Order
-    temp_order = np.argsort(5e-2*entropy_arr + corr_arr)[::-1]
+    temp_order = np.argsort(5e-1*np.log(1+entropy_arr) + corr_arr)[::-1]
     # temp_order = np.argsort(ks_arr - 5e-2*np.log(entropy_arr))
 
     # Filter for interest and diversity
@@ -504,6 +537,8 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20):
 
     # By raw score, raw score and diversity
     # print(entropy_arr[temp_order])
+    # print(datasets[0][:, feature_idx[0]])
+    # print(distribution_true[feature_idx[0]])
     # print(corr_arr[temp_order])
     return temp_order, feature_idx
 

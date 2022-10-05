@@ -1224,6 +1224,9 @@ def plot_distribution_alone(
     fnames=None,
     gcf=None,
     rows=2,
+    remove_outliers=True,
+    equal_axes=False,
+    feature_dict={},
     **kwargs,
 ):
     datasets = [np.array(d) for d in datasets]
@@ -1236,12 +1239,21 @@ def plot_distribution_alone(
 
     # Destructively limit data
     names = ['Real', 'Imputed']
-    if feature_limit is not None:
-        feature_idx = sort_by_interest(datasets, limit=feature_limit)[1]
-        datasets = [data[:, feature_idx] for data in datasets]
-        for i in range(len(fnames)):
-            if fnames[i] is not None:
-                fnames[i] = fnames[i][feature_idx]
+    feature_limit = feature_limit if feature_limit is not None else datasets[0].shape[1]
+    feature_idx = sort_by_interest(datasets,
+                                   limit=feature_limit,
+                                   remove_outliers=remove_outliers)[1]
+    datasets = [data[:, feature_idx] for data in datasets]
+    # if remove_outliers:
+    #     filter = outliers(datasets[0], verbose=True)
+    #     for i in range(len(datasets)):
+    #         datasets[i][filter] = np.nan
+    #         print(np.max(datasets[i][~np.isnan(datasets[i])]))
+    for i in range(len(fnames)):
+        fnames[i] = fnames[i][feature_idx]
+        for j in range(len(fnames[i])):
+            if fnames[i][j] in feature_dict:
+                fnames[i][j] = feature_dict[fnames[i][j]]
 
     # Distribution preview
     axs = []
@@ -1254,7 +1266,7 @@ def plot_distribution_alone(
             assert False, 'Unexpected number of subplots'
         axs.append(ax)
         df = pd.DataFrame(datasets[i])
-        fname = fnames[i] if fnames[i] is not None else [f'Feature {i}' for i in range(len(df.columns))]
+        fname = fnames[i]
         fname = np.array(fname)
         df.columns = fname
         df.columns.name = None
@@ -1276,6 +1288,7 @@ def plot_distribution_alone(
             y='Value',
             hue='Type',
             ax=ax,
+            # showfliers=not remove_outliers,
         )
         for j in range(feature_limit-1):
             ax.axvline(x=j+.5, color='black', linestyle='--')
@@ -1288,10 +1301,18 @@ def plot_distribution_alone(
             ax.set_title(None)
         ax.set_ylabel(names[i])
         ax.legend([], [], frameon=False)
-    # axs_ylim = np.array([ax.get_ylim() for ax in axs])
-    # new_ylim = (axs_ylim.min(axis=0)[0], axs_ylim.max(axis=0)[1])
+    if remove_outliers:
+        for i in range(len(axs)):
+            ax = axs[i] if not equal_axes else axs[0]
+            d = datasets[i] if not equal_axes else datasets[0]
+            new_ylim = outliers(d, return_limits=True)[1]
+            stretch=1.5
+            new_ylim = (
+                np.min(new_ylim[0]-stretch*new_ylim[2]),
+                np.max(new_ylim[1]+stretch*new_ylim[2]))
+            new_ylim = (max(new_ylim[0], ax.get_ylim()[0]), min(new_ylim[1], ax.get_ylim()[1]))
+            axs[i].set_ylim(new_ylim)
     for ax in axs:
-        # ax.set_ylim(new_ylim)
         set_yticks(ax, 4)
     plt.gcf().subplots_adjust(hspace=0)
 
