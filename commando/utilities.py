@@ -508,6 +508,17 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20):
     return temp_order, feature_idx
 
 
+def hash_kwargs(kwargs, dataset_name, dataset):
+    fromChar = [' ', '),', '(', ')', ',', '\'', '[', ']']
+    toChar = ['', '--', '', '', '-', '', '(', ')']
+    kwargs_str = str(sorted(kwargs.items()))[1:-1]
+    for f, t in zip(fromChar, toChar):
+        kwargs_str = kwargs_str.replace(f, t)
+    size_str = '---'.join([dataset_name, '-'.join([str(s) for s in dataset[0].shape]), '-'.join([str(s) for s in dataset[1].shape])])
+    hash_str = '---'.join([size_str, kwargs_str])
+    return size_str, hash_str
+
+
 class preclass:
     def __init__(self, sample, pca=None, axis=None):
         self.sample = sample

@@ -47,16 +47,6 @@ class edModel(nn.Module):
             ))
         self.encoders = nn.ModuleList(self.encoders)
 
-        self.fc_mus = []
-        for i in range(self.num_modalities):
-            self.fc_mus.append(nn.Linear(input_dim[i], output_dim))
-        self.fc_mus = nn.ModuleList(self.fc_mus)
-
-        self.fc_vars = []
-        for i in range(self.num_modalities):
-            self.fc_vars.append(nn.Linear(input_dim[i], output_dim))
-        self.fc_vars = nn.ModuleList(self.fc_vars)
-
         self.decoders = []
         for i in range(self.num_modalities):
             self.decoders.append(nn.Sequential(
@@ -81,7 +71,6 @@ class edModel(nn.Module):
         self.decoders = nn.ModuleList(self.decoders)
 
         self.sigma = nn.Parameter(torch.rand(self.num_modalities))
-        self.log_scale = nn.Parameter(torch.zeros(self.num_modalities))
 
     def encode(self, X):
         return [self.encoders[i](X[i]) for i in range(self.num_modalities)]
@@ -129,7 +118,15 @@ class edModelVar(nn.Module):
     Variational encoder-decoder model for use in dimensionality reduction.
     In the style of UnionCom's ``Model.py``
     """
-    def __init__(self, input_dim, output_dim, preprocessing=None, preprocessing_inverse=None, sigma=None):
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        preprocessing=None,
+        preprocessing_inverse=None,
+        sigma=None,
+        dropout=None,
+    ):
         super().__init__()
 
         self.num_modalities = len(input_dim)
@@ -142,6 +139,10 @@ class edModelVar(nn.Module):
             self.preprocessing_inverse = self.num_modalities * [identity]
         else:
             self.preprocessing_inverse = preprocessing_inverse
+        # Dropout should be 0 for single-modality dominating or
+        # pure integration applications
+        if dropout is None:
+            dropout = .6 if max(input_dim) > 64 else 0
 
         self.encoders = []
         for i in range(self.num_modalities):
@@ -150,10 +151,17 @@ class edModelVar(nn.Module):
                 nn.Linear(input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
                 nn.LeakyReLU(),
+                nn.Dropout(dropout),
+
+                # nn.Linear(2*input_dim[i], 2*input_dim[i]),
+                # nn.BatchNorm1d(2*input_dim[i]),
+                # nn.LeakyReLU(),
+                # nn.Dropout(dropout),
 
                 nn.Linear(2*input_dim[i], input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
                 nn.LeakyReLU(),
+                nn.Dropout(dropout),
 
                 # # BABEL Like
                 # nn.Linear(input_dim[i], 2*output_dim),
@@ -184,14 +192,19 @@ class edModelVar(nn.Module):
                 nn.Linear(output_dim, input_dim[i]),
                 nn.BatchNorm1d(input_dim[i]),
                 nn.LeakyReLU(),
+                nn.Dropout(dropout),
 
                 nn.Linear(input_dim[i], 2*input_dim[i]),
                 nn.BatchNorm1d(2*input_dim[i]),
                 nn.LeakyReLU(),
+                nn.Dropout(dropout),
+
+                # nn.Linear(2*input_dim[i], 2*input_dim[i]),
+                # nn.BatchNorm1d(2*input_dim[i]),
+                # nn.LeakyReLU(),
+                # nn.Dropout(dropout),
 
                 nn.Linear(2*input_dim[i], input_dim[i]),
-                # nn.BatchNorm1d(input_dim[i]),
-                # nn.LeakyReLU(),
 
                 # # BABEL Like
                 # nn.Linear(output_dim, 2*output_dim),
@@ -199,13 +212,12 @@ class edModelVar(nn.Module):
                 # nn.PReLU(),
                 #
                 # nn.Linear(2*output_dim, input_dim[i]),
-                # nn.BatchNorm1d(input_dim[i]),
-                # nn.PReLU(),
             ))
         self.decoders = nn.ModuleList(self.decoders)
 
+        # self.sigma = torch.Tensor([1, 1])
+        # self.sigma = [1, 1]
         self.sigma = nn.Parameter(torch.rand(self.num_modalities))
-        self.log_scale = nn.Parameter(torch.zeros(self.num_modalities))
 
     def encode(self, X):
         return [self.encoders[i](X[i]) for i in range(self.num_modalities)]
@@ -213,21 +225,26 @@ class edModelVar(nn.Module):
     def refactor(self, X, index=None):
         if index is None:
             index = range(self.num_modalities)
-        zs = []; mus = []; stds = []
+        zs = []; mus = []; logvars = []
         for x, i in zip(X, index):
             mu = self.fc_mus[i](x)
-            log_var = self.fc_vars[i](x)
-            std = torch.exp(log_var)
+            logvar = self.fc_vars[i](x)
+            std = torch.exp(logvar / 2)
             if not self.training:
                 zs.append(mu)
             else:
+                # Rounding protection so that std != 0
+                # If you encounter an error here, your lr is likely too high
+                std = std + 1e-7
                 q = torch.distributions.Normal(mu, std)
                 zs.append(q.rsample())
             mus.append(mu)
-            stds.append(std)
-        return zs, mus, stds
+            logvars.append(logvar)
+        return zs, mus, logvar
 
     def combine(self, X, corr):
+        # asdf: Normalize corr vectors used
+        # sig_norm = self.model.sigma / self.model.sigma.sum()
         return [
             (
                 self.sigma[i] * X[i]
@@ -251,11 +268,11 @@ class edModelVar(nn.Module):
         corr: Correspondence matrix
         """
         # VAE
-        zs, mus, stds = self.refactor(self.encode(X))
+        zs, mus, logvars = self.refactor(self.encode(X))
         combined = self.combine(zs, corr)
         X_hat = self.decode(combined)
 
-        return zs, combined, X_hat, mus, stds
+        return zs, combined, X_hat, mus, logvars
 
     def impute(self, X, compose):
         from_mod, to_mod = compose

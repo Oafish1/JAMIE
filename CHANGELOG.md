@@ -1,3 +1,14 @@
+# 4.1.0
+- Add gradient clipping
+- Added `plot_impact` to `evaluation` module
+- Change early stop behavior and add `min_epochs`, mainly for KL annealing
+- Fix scaling on `F` and `P` subsets during training
+- Increase model robustness
+- Lots of small fixes, errors mainly appeared with large datasets
+- Model saving for all algorithms and outputs
+- Reruns
+- Visualization additions and changes
+
 # 4.0.0
 - Add `adjustText` for cleaner text notations
 - Add `batch_step` option for typical AE iteration

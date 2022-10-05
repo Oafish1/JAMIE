@@ -131,8 +131,10 @@ submission/**
 run_all.sh
 run_active.sh
 
-# Babel runs
+# Data runs
 babel_data/
+output_data/
 
 # Models
 *.h5
+*.npy

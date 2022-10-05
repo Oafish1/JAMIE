@@ -46,10 +46,13 @@ class ComManDo(uc.UnionCom):
         loss_weights=None,
         model_pca='pca',
         model_class=edModelVar,
+        model_lr=1e-3,
+        dropout=None,
         pca_dim=None,
-        batch_step=False,
+        batch_step=True,
         use_f_tilde=True,
-        use_early_stop=False,
+        use_early_stop=True,
+        min_epochs=500,
         min_increment=1e-8,
         max_steps_without_increment=500,
         debug=False,
@@ -65,11 +68,14 @@ class ComManDo(uc.UnionCom):
         self.loss_weights = loss_weights
         self.model_pca = model_pca
         self.model_class = model_class
+        self.model_lr = model_lr
+        self.dropout = dropout
         self.pca_dim = pca_dim
 
         self.batch_step = batch_step
         self.use_f_tilde = use_f_tilde
         self.use_early_stop = use_early_stop
+        self.min_epochs = min_epochs
         self.min_increment = min_increment
         self.max_steps_without_increment = max_steps_without_increment
 
@@ -81,7 +87,7 @@ class ComManDo(uc.UnionCom):
             'project_mode': 'commando',
             'log_pd': 500,
             'lr': 1e-3,
-            'epoch_DNN': 2500,
+            'epoch_DNN': 10000,
             'log_DNN': 500,
         }
         for k, v in defaults.items():
@@ -408,12 +414,6 @@ class ComManDo(uc.UnionCom):
         self.P = torch.Tensor(self.P).float().to(self.device)
         self.F = torch.Tensor(W[0][1]).float().to(self.device)
 
-        # Debugging
-        # self.epoch_DNN = 500
-        # self.lr = .1
-        # self.batch_size = 8
-        # self.batch_size = 177
-
         timer = time_logger()
         pca_list = []
         pca_inv_list = []
@@ -459,8 +459,10 @@ class ComManDo(uc.UnionCom):
                 self.output_dim,
                 preprocessing=pca_list,
                 preprocessing_inverse=pca_inv_list,
+                dropout=self.dropout,
             ).to(self.device))
-        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        # Weight decay is L2, for std to not go nan
+        optimizer = optim.Adam(self.model.parameters(), lr=self.model_lr)  # , weight_decay=1e-5)
 
         def sim_diff_func(a, b):
             if self.dist_method == 'cosine':
@@ -478,9 +480,8 @@ class ComManDo(uc.UnionCom):
             elif self.dist_method == 'euclidean':
                 # Euclidean Distance
                 dist = torch.cdist(a, b, p=2)
-                # dist = dist / dist.max()
                 sim = 1 / (1+dist)
-                sim = 2 * sim - 1  # This one scaling line makes the entire algorithm work
+                sim = 2 * sim - 1  # This scaling line is important
                 sim = sim / sim.max()
                 return sim, dist
 
@@ -521,16 +522,19 @@ class ComManDo(uc.UnionCom):
 
                 # P setup
                 P = self.P[random_batch[0]][:, random_batch[1]]
-                if P.absolute().max() != 0:
-                    P /= P.absolute().max()
+                P_sum = P.sum(axis=1)
+                P_sum[P_sum==0] = 1
+                P = P / P_sum[:, None]
 
                 # F setup
                 F = self.F[random_batch[0]][:, random_batch[1]]
-                if F.absolute().max() != 0:
-                    F /= F.absolute().max()
+                F_sum = F.sum(axis=1)
+                F_sum[F_sum==0] = 1
+                F = F / F_sum[:, None]
                 F_inv = 1 - F
-                if F_inv.absolute().max() != 0:
-                    F_inv /= F_inv.absolute().max()
+                F_inv_sum = F_inv.sum(axis=1)
+                F_inv_sum[F_inv_sum==0] = 1
+                F_inv = F_inv / F_inv_sum[None, :]
 
                 timer.log('Get subset samples')
 
@@ -538,65 +542,34 @@ class ComManDo(uc.UnionCom):
                 corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F
 
                 # Run model
-                embedded, combined, reconstructed, mus, stds = self.model(*data, corr=corr)
+                embedded, combined, reconstructed, mus, logvars = self.model(*data, corr=corr)
                 timer.log('Run model')
 
                 # Loss bookkeeping
                 losses = []
                 losses_names = []
 
-                # # ELBO (VAE)
-                # # kl
-                # kl_list = []
-                # for z, mu, std in zip(embedded, mus, stds):
-                #     p = torch.distributions.Normal(torch.zeros_like(mu), torch.ones_like(std))
-                #     q = torch.distributions.Normal(mu, std)
-                #
-                #     log_qzx = q.log_prob(z)
-                #     log_pz = p.log_prob(z)
-                #
-                #     kl = log_qzx - log_pz
-                #     kl_list.append(kl.sum(-1))
-                #
-                # # gaus
-                # rec_list = []
-                # for dat, rec, ls in zip(data, reconstructed, self.model.log_scale):
-                #     scale = torch.exp(ls)
-                #     dist = torch.distributions.Normal(rec, scale)
-                #
-                #     log_pxz = dist.log_prob(dat)
-                #     rec_list.append(log_pxz.sum(-1))
-                #
-                # # if (epoch % 500) == 0:
-                # #     print(self.model.log_scale)
-                # #     print(torch.exp(log_pxz.max()))
-                # #     print()
-                #
-                # elbo = sum([(kl - rec).mean() for kl, rec in zip(kl_list, rec_list)])
-                # losses.append(elbo)
-                # timer.log('ELBO')
-
                 # KL Loss (VAE)
                 kl_loss = sum(
                     -.5 * torch.sum(
                         1
-                        + torch.log(stds[i])
-                        - torch.square(mus[i])
-                        - torch.square(stds[i])
-                    )  / data[i].shape[0]
+                        + logvars[i]
+                        - mus[i].square()
+                        - logvars[i].exp(),
+                        axis=1
+                    ).mean(axis=0)
                     for i in range(self.dataset_num)
                 )
                 # https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
-                c = self.epoch_DNN / 2  # Midpoint
+                c = (self.min_epochs / 2) if self.min_epochs > 0 else (self.epoch_DNN / 2)  # Midpoint
                 kl_anneal = 1 / ( 1 + np.exp( - 5 * (epoch - c) / c ) )
                 losses.append(1e-3 * kl_anneal * kl_loss)
                 losses_names.append('KL')
                 timer.log('KL Loss')
-                # asdf revise early stop for late-increasing losses
 
                 # MSE Reconstruction error (AE/VAE)
                 reconstruction_loss = sum(
-                    (reconstructed[i] - data[i]).square().sum() / prod(data[i].shape)
+                    (reconstructed[i] - data[i]).square().mean(axis=1).mean(axis=0)
                     for i in range(self.dataset_num)
                 )
                 losses.append(reconstruction_loss)
@@ -613,9 +586,9 @@ class ComManDo(uc.UnionCom):
                 timer.log('Difference calculation')
 
                 # Cosine Loss (asdf update with P)
-                cosine_loss = torch.diag(
-                    codiff0 / data[0].shape[0]
-                    + codiff1 / data[1].shape[0]).sum()
+                cosine_loss = (
+                    torch.diag(codiff0.square()).mean(axis=0)
+                    + torch.diag(codiff1.square()).mean(axis=0))
                 losses.append(cosine_loss)
                 losses_names.append('CosSim')
                 timer.log('Cosine Loss')
@@ -623,10 +596,37 @@ class ComManDo(uc.UnionCom):
                 # F Reconstruction Loss
                 F_est = torch.square(
                     combined[0] - torch.mm(F, combined[1])
-                ).sum() / prod(combined[0].shape)
+                ).mean(axis=1).mean(axis=0)
                 losses.append(F_est)
                 losses_names.append('F')
                 timer.log('F Loss')
+
+                # if np.random.rand() > .999:
+                #     # print(self.model.sigma)
+                #     al = (embedded[1] - embedded[0]).square().mean(axis=1).mean()
+                #     print(f'{al.detach()}\t{embedded[0].min()}\t{embedded[0].max()}\t'
+                #           f'{embedded[1].min()}\t{embedded[1].max()}')
+
+                # Decoder Ratio Loss
+                # recon0 = self.model.decoders[0](embedded[0])
+                # recon0 = (recon0 - data[0]).square().mean(axis=1).mean().reshape((-1))
+                # recon1 = self.model.decoders[1](embedded[1])
+                # recon1 = (recon1 - data[1]).square().mean(axis=1).mean().reshape((-1))
+                # self.model.sigma = self.model.sigma * torch.cat((recon0, recon1))
+                # ratio_loss = (recon0 - recon1).square()
+                # losses.append(1e2*ratio_loss)
+                # losses_names.append('Ratio')
+                # timer.log('Ratio Loss')
+
+                # # Sigma Loss
+                # # Single-modality performance is better if this loss is
+                # # left out.  If so though, the modality with more info
+                # # will dominate, causing the modalities to become unaligned.
+                # sig_norm = self.model.sigma / self.model.sigma.sum()
+                # sigma_loss = (sig_norm - .5).square().mean()
+                # losses.append(sigma_loss)
+                # losses_names.append('Sigma')
+                # timer.log('Sigma Loss')
 
                 # # Cross Loss
                 # cross_loss = comdiff1 * F
@@ -669,12 +669,15 @@ class ComManDo(uc.UnionCom):
 
                 if self.batch_step:
                     # Step
+                    # Grad clipping messes up the whole model if set too low
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
                     optimizer.step()
                     optimizer.zero_grad()
                     timer.log('Step')
 
             if not self.batch_step:
                 # Step
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1)
                 optimizer.step()
                 optimizer.zero_grad()
                 timer.log('Step')
@@ -698,18 +701,21 @@ class ComManDo(uc.UnionCom):
                 active_loss = best_batch_loss
             else:
                 active_loss = epoch_loss
-            epsilon = best_running_loss - active_loss
-            if epsilon > self.min_increment:
-                best_running_loss = active_loss
-                streak = 0
-            else:
-                streak += 1
-            if streak >= self.max_steps_without_increment and self.use_early_stop:
-                break
+            if epoch > self.min_epochs:
+                epsilon = best_running_loss - active_loss
+                if epsilon > self.min_increment:
+                    best_running_loss = active_loss
+                    streak = 0
+                else:
+                    streak += 1
+                if (streak >= self.max_steps_without_increment
+                    and self.use_early_stop):
+                    # This makes the real min epochs self.epoch_DNN + self.max_steps...
+                    break
 
         self.model.eval()
-        corr_P = self.P / self.P.absolute().max()
-        corr_F = self.F / self.F.absolute().max()
+        corr_P = self.P / self.P.sum(0)[None, :]
+        corr_F = self.F / self.F.sum(0)[None, :]
         corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
         integrated_data = self.model(*self.dataset, corr=corr)[0]
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]

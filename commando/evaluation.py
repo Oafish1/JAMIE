@@ -855,6 +855,7 @@ def plot_integrated(
     separate_dim=False,
     square=False,
     method='umap',
+    n_neighbors=None,
 ):
     assert method in ('pca', 'umap')
     method_names = {'pca': 'PC', 'umap': 'UMAP'}
@@ -867,9 +868,15 @@ def plot_integrated(
         if i == 0 or separate_dim:
             if method == 'pca':
                 red = PCA(n_components=n_components)
-                red.fit(dat)
+                if separate_dim:
+                    red.fit(dat)
+                else:
+                    red.fit(np.concatenate(data, axis=0))
             elif method == 'umap':
-                red = umap.UMAP(n_components=n_components)
+                red = umap.UMAP(
+                    n_components=n_components,
+                    n_neighbors=min(200, dat.shape[0] - 1) if n_neighbors is None else n_neighbors,
+                    min_dist=.5)
                 if separate_dim:
                     red.fit(dat)
                 else:
@@ -881,7 +888,7 @@ def plot_integrated(
             data_subset = np.transpose(plot_data[lab == l])
             if remove_outliers:
                 data_subset = data_subset[:, ~filter[lab == l]]
-            ax.scatter(*data_subset, s=20., label=l)
+            ax.scatter(*data_subset, s=3e3*(1/dat.shape[0]), label=l)
         if i == 1 and legend:
             ax.legend()
         if names is not None:
@@ -1093,7 +1100,7 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
         ax.get_legend().remove()
 
 
-def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_features=10000):
+def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_features=100_000):
     total_features = min(data[i].shape[1], max_features)
     # Samples by default
     feat_idx = np.random.choice(data[i].shape[1], total_features, replace=False)
@@ -1113,7 +1120,7 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_featur
         feat_auc.append(temp)
     _plot_auroc_correlation_template(ax, feat_auc, names, 'AUROC', modal_names[i])
 
-def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_features=10000):
+def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_features=100_000):
     total_features = min(data[i].shape[1], max_features)
     # Samples by default
     feat_idx = np.random.choice(data[i].shape[1], total_features, replace=False)
@@ -1212,7 +1219,7 @@ def plot_auroc_correlation(*args, index=0, **kwargs):
 def plot_distribution_alone(
     datasets,
     labels,
-    feature_limit=3,
+    feature_limit=2,
     title=None,
     fnames=None,
     gcf=None,
@@ -1281,10 +1288,10 @@ def plot_distribution_alone(
             ax.set_title(None)
         ax.set_ylabel(names[i])
         ax.legend([], [], frameon=False)
-    axs_ylim = np.array([ax.get_ylim() for ax in axs])
-    new_ylim = (axs_ylim.min(axis=0)[0], axs_ylim.max(axis=0)[1])
+    # axs_ylim = np.array([ax.get_ylim() for ax in axs])
+    # new_ylim = (axs_ylim.min(axis=0)[0], axs_ylim.max(axis=0)[1])
     for ax in axs:
-        ax.set_ylim(new_ylim)
+        # ax.set_ylim(new_ylim)
         set_yticks(ax, 4)
     plt.gcf().subplots_adjust(hspace=0)
 
@@ -1320,7 +1327,7 @@ def plot_distribution_similarity(
     labels,
     suptitle=None,
     title=None,
-    max_features=100,
+    max_features=1000,
     relative=True,
     label_cells=True,
     legend=False,
@@ -1389,3 +1396,47 @@ def plot_distribution_similarity(
         ax.legend()
     else:
         ax.legend([], [], frameon=False)
+
+
+def plot_impact(
+    values,
+    fnames,
+    baseline,
+    ylabel='LTA',
+    max_features=None,
+    sort='mixed-min',
+    color=None,
+):
+    num_features = len(values) if max_features is None else max_features
+    num_features = min(len(values), num_features)
+    if sort is not None:
+        if sort == 'min':
+            sort = np.argsort(values)
+        elif sort == 'max':
+            sort = np.argsort(values)[::-1]
+        elif sort.split('-')[0] == 'mixed':
+            if sort.split('-')[1] == 'max':
+                var1 = np.argsort(values)[::-1]
+            elif sort.split('-')[1] == 'min':
+                var1 = np.argsort(values)
+            else:
+                assert False, f'Invalid sort method \'{sort}\' provided.'
+            var1 = var1[:int(num_features/3)]
+            var2 = np.random.choice(
+                list(set(list(range(len(values)))) - set(var1)),
+                num_features - len(var1),
+                replace=False)
+            sort = np.concatenate([var1, var2])
+            np.random.shuffle(sort)
+        else:
+            assert False, f'Invalid sort method \'{sort}\' provided.'
+        values = values[sort]
+        fnames = fnames[sort]
+    values = values[:num_features]
+    fnames = fnames[:num_features]
+
+    ax = plt.gcf().add_subplot(1, 1, 1)
+    sns.barplot(x=fnames, y=values, ax=ax, color=color)
+    ax.axhline(y=baseline, color='red', linewidth=3)
+    ax.set_ylabel(ylabel)
+    plt.xticks(rotation=80)
