@@ -14,6 +14,7 @@ setup(
     install_requires=[
         'adjustText',
         'anndata',
+        'brokenaxes',
         'matplotlib',
         'numpy',
         'scikit-learn-extra',

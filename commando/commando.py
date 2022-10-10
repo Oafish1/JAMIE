@@ -48,7 +48,7 @@ class ComManDo(uc.UnionCom):
         model_class=edModelVar,
         model_lr=1e-3,
         dropout=None,
-        pca_dim=None,
+        pca_dim=2*[512],
         batch_step=True,
         use_f_tilde=True,
         use_early_stop=True,
@@ -89,6 +89,7 @@ class ComManDo(uc.UnionCom):
             'lr': 1e-3,
             'epoch_DNN': 10000,
             'log_DNN': 500,
+            'batch_size': 512,
         }
         for k, v in defaults.items():
             if k not in kwargs:
@@ -551,7 +552,7 @@ class ComManDo(uc.UnionCom):
 
                 # KL Loss (VAE)
                 kl_loss = sum(
-                    -.5 * torch.sum(
+                    -.5 * torch.mean(  # Changed to mean for dimensionless
                         1
                         + logvars[i]
                         - mus[i].square()
@@ -563,7 +564,7 @@ class ComManDo(uc.UnionCom):
                 # https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
                 c = (self.min_epochs / 2) if self.min_epochs > 0 else (self.epoch_DNN / 2)  # Midpoint
                 kl_anneal = 1 / ( 1 + np.exp( - 5 * (epoch - c) / c ) )
-                losses.append(1e-3 * kl_anneal * kl_loss)
+                losses.append(32 * 1e-3 * kl_anneal * kl_loss)
                 losses_names.append('KL')
                 timer.log('KL Loss')
 
@@ -585,11 +586,11 @@ class ComManDo(uc.UnionCom):
                 # comsim1, comdiff1 = sim_diff_func(combined[0], combined[1])
                 timer.log('Difference calculation')
 
-                # Cosine Loss (asdf update with P)
-                cosine_loss = (
-                    torch.diag(codiff0.square()).mean(axis=0)
-                    + torch.diag(codiff1.square()).mean(axis=0))
-                losses.append(cosine_loss)
+                # Cosine Loss
+                cosine_loss = (  # Changed for dimensionless
+                    torch.diag(codiff0.square()).mean(axis=0) / embedded[0].shape[1]
+                    + torch.diag(codiff1.square()).mean(axis=0) / embedded[1].shape[1])
+                losses.append(32 * cosine_loss)
                 losses_names.append('CosSim')
                 timer.log('Cosine Loss')
 
@@ -750,7 +751,7 @@ class ComManDo(uc.UnionCom):
         if not pre_transformed:
             dataset = self.model.preprocessing[i](dataset)
         dataset = torch.Tensor(dataset)
-        integrated = self.model.encoders[i](dataset)
+        integrated = self.model.fc_mus[i](self.model.encoders[i](dataset))
         return integrated.detach().cpu().numpy()
 
     def compute_distances(self, save_dist=True):

@@ -2,6 +2,9 @@
 ### AdjustText
 [Source](https://zenodo.org/badge/latestdoi/49349828)
 
+### BrokenAxes
+[Source](https://github.com/bendichter/brokenaxes)
+
 
 ### Base (UnionCom v0.4.0)
 [Paper](https://academic.oup.com/bioinformatics/article/36/Supplement_1/i48/5870490)

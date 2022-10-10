@@ -2,6 +2,7 @@ import contextlib
 import math
 
 from adjustText import adjust_text
+from brokenaxes import brokenaxes
 from matplotlib.collections import PatchCollection
 import matplotlib.pyplot as plt
 import numpy as np
@@ -850,7 +851,7 @@ def plot_integrated(
     labels,
     names=None,
     legend=False,
-    remove_outliers=True,
+    remove_outliers=False,
     n_components=2,
     separate_dim=False,
     square=False,
@@ -887,7 +888,7 @@ def plot_integrated(
         for l in np.unique(np.concatenate(labels)):
             data_subset = np.transpose(plot_data[lab == l])
             if remove_outliers:
-                data_subset = data_subset[:, ~filter[lab == l]]
+                data_subset[~filter[lab == l].T] = np.nan
             ax.scatter(*data_subset, s=3e3*(1/dat.shape[0]), label=l)
         if i == 1 and legend:
             ax.legend()
@@ -944,7 +945,8 @@ def plot_accuracy(data, labels, names, colors=None):
             x='Algorithm',
             y='value',
             ax=ax,
-            palette=colors)
+            palette=colors,
+        )
         ax.set_ylabel(v)
         ax.set_xlabel(None)
 
@@ -1012,56 +1014,101 @@ def plot_accuracy_table(data, labels, names, exclude=[]):
     ax.grid(which='minor')
 
 
-def plot_accuracy_graph(data, labels, names, exclude=[], colors=None):
+def plot_accuracy_graph(data, labels, names, colors=None, shapes=None):
+    if colors is None:
+        colors = len(data) * [None]
+    if shapes is None:
+        shapes = len(data) * [None]
+
     types = [np.unique(type, return_inverse=True)[1] for type in labels]
     # Metric by Algorithm
     acc_dict = {
-        'Algorithm': [names[i] for i in range(len(data)) if i not in exclude],
-        'LTA': [],
+        'Algorithm': names,
         'FOSCTTM': [],
+        'LTA': [],
     }
     for i in range(len(data)):
-        if i in exclude:
-            continue
         with contextlib.redirect_stdout(None):
+            acc_dict['FOSCTTM'].append(test_closer(data[i]))
             lta, k = test_LabelTA(data[i], types, return_k=True)
             acc_dict['LTA'].append(lta)
-            acc_dict['FOSCTTM'].append(test_closer(data[i]))
-    acc_dict[f'LTA (k={k})'] = acc_dict.pop('LTA')
     df = pd.DataFrame(acc_dict)
     df.index = df['Algorithm']
     df = df[set(df.columns) - {'Algorithm'}]
     df = df.transpose()
 
-    ax = plt.gcf().add_subplot(1, 1, 1)
+    # Calculate discontinuities
+    bounds = []
+    for vals in [df.transpose()['FOSCTTM'], df.transpose()['LTA']]:
+        bounds.append([])
+        max_dist = .2
+        pad = .1
+
+        sorted_vals = np.sort(vals)
+        min_val = sorted_vals[0]
+        max_val = sorted_vals[0]
+        for val in sorted_vals[1:]:
+            if val - max_val > max_dist:
+                bounds[-1].append((min_val - pad, max_val + pad))
+                min_val = max_val = val
+            else:
+                max_val = val
+        bounds[-1].append((min_val - pad, max_val + pad))
+
+    # Reverse x axis
+    bounds[0] = [e[::-1] for e in bounds[0]][::-1]
+
     # Plot
-    sns.scatterplot(
-        data=df.transpose(),
-        x='FOSCTTM',
-        y=f'LTA (k={k})',
-        hue='Algorithm',
-        # style='Algorithm',
-        ax=ax,
-        palette=[c for i, c in enumerate(colors) if i not in exclude] if colors is not None else None,
-        # edgecolor='black',
-        marker='s',
-        s=200,
-        alpha=1)
-    ax.set_xlabel('FOSCTTM')
-    ax.set_ylabel(f'LTA (k={k})')
+    bax = brokenaxes(
+        xlims=bounds[0],
+        ylims=bounds[1],
+        hspace=.05,
+        wspace=.05,
+    )
+    for col, c, m in zip(df.columns, colors, shapes):
+        bax.scatter(df[col]['FOSCTTM'], df[col]['LTA'], c=c, marker=m, s=200.)
+    bax.set_xlabel('FOSCTTM', labelpad=30)
+    bax.set_ylabel(f'LTA (k={k})', labelpad=45)
 
     # Add text
-    # for i, row in df.transpose().iterrows():
-    #     ax.annotate(i.replace('\n', ' '), (row['FOSCTTM']-.005, row[f'LTA (k={k})']+.005), ha='left')
-    # ax.axis('square')
-    ax.set_box_aspect(1)
-    tbs = [
-        ax.text(row['FOSCTTM'], row[f'LTA (k={k})'], i.replace('\n', ' '), ha='center', va='center')
-        for i, row in df.transpose().iterrows()]
-    ax.set_ylim([min(df.transpose()[f'LTA (k={k})']) - .01, max(df.transpose()[f'LTA (k={k})']) + .02])
-    ax.set_xlim([max(df.transpose()['FOSCTTM']) + .01, min(df.transpose()['FOSCTTM']) - .02])
-    adjust_text(tbs, force_points=2., arrowprops=dict(arrowstyle='-', color='black'))
-    ax.get_legend().remove()
+    tbs = []
+    for i, row in df.transpose().iterrows():
+        idx = (len(bounds[1]) - 1) * len(bounds[0])
+        for bound in bounds[0]:
+            if min(bound) <= row['FOSCTTM'] <= max(bound):
+                break
+            idx += 1
+        else:  # Executes if no break
+            assert False, 'Value not within `bound`'
+        for bound in bounds[1]:
+            if min(bound) <= row['LTA'] <= max(bound):
+                break
+            idx -= len(bounds[0])
+        else:  # Executes if no break
+            assert False, 'Value not within `bound`'
+        ax = bax.axs[idx]
+
+        coord = [row['FOSCTTM'], row['LTA']]
+        convert = ax.transData + bax.big_ax.transData.inverted()
+        coord = convert.transform(coord)
+        tbs.append(
+            bax.big_ax.text(
+                *coord,
+                i.replace('\n', ' '),
+                ha='center',
+                va='center',
+                # transform=ax.transAxes,
+        ))
+    adjust_text(
+        tbs,
+        force_points=2.,
+        arrowprops=dict(
+            arrowstyle='-',
+            color='black',
+            shrinkA=0,
+            shrinkB=10,
+        ),
+    )
 
 
 def plot_silhouette(data, labels, names, modal_names, colors=None):
@@ -1238,7 +1285,7 @@ def plot_distribution_alone(
         gcf = plt.gcf()
 
     # Destructively limit data
-    names = ['Real', 'Imputed']
+    names = ['Measured', 'Imputed']
     feature_limit = feature_limit if feature_limit is not None else datasets[0].shape[1]
     feature_idx = sort_by_interest(datasets,
                                    limit=feature_limit,
@@ -1348,7 +1395,7 @@ def plot_distribution_similarity(
     labels,
     suptitle=None,
     title=None,
-    max_features=1000,
+    max_features=100,
     relative=True,
     label_cells=True,
     legend=False,
@@ -1461,3 +1508,73 @@ def plot_impact(
     ax.axhline(y=baseline, color='red', linewidth=3)
     ax.set_ylabel(ylabel)
     plt.xticks(rotation=80)
+
+
+def evaluate_impact(function, perf_function, in_data, features=None, mode='replace'):
+    assert mode in ['replace', 'keep']
+
+    in_data = in_data.copy()
+    background = in_data.mean(0)
+
+    # Calculate baseline
+    logits = function(in_data)
+    baseline = perf_function(logits)
+
+    performance = []
+    best_idx = -1
+    best_perf = -np.inf
+    best_str = ''
+    check_best = 10
+    # testing_idx = np.random.choice(dataset[mod0].shape[1], int(1e3), replace=False)
+    testing_idx = np.array(range(in_data.shape[1]))
+    for i, idx in enumerate(testing_idx):
+        # CLI
+        if (i+1) % check_best == 0 and len(performance) > 0:
+            if mode == 'replace':
+                best_idx = np.argmax(-np.array(performance))
+            elif mode == 'keep':
+                best_idx = np.argmax(performance)
+            best_perf = performance[best_idx]
+            best_str = features[testing_idx[best_idx]] if features is not None else 'NA'
+        prog_str = math.floor(50*(i+1)/len(testing_idx)) * '|'
+        print(
+            f'{i+1:>{len(str(len(testing_idx)))}}/{len(testing_idx)} [{prog_str:<50}] - '
+            f'Current Best: {best_perf:.5f}, {best_str}'
+            , end='\r')
+
+        mod_data = in_data
+        # Replace one
+        if mode == 'replace':
+            replace_idx = idx
+        elif mode == 'keep':
+            replace_idx = [i!=idx for i in range(mod_data.shape[1])]
+        old_data = mod_data[:, replace_idx]
+        mod_data[:, replace_idx] = background[replace_idx]
+
+        # Predict
+        logits = function(mod_data)
+        # logits = current_cm.modal_predict(mod_data, mod0)[:, target]  # Imputation
+        # logits = current_cm.test_LabelTA(2*[current_cm.transform_one(mod_data, mod0)], labels)  # LTA
+
+        # Repair
+        mod_data[:, replace_idx] = old_data
+
+        # Record
+        # perf = stats.pearsonr(logits, out_data)[0]  # Imputation
+        # perf = logits  # LTA
+        perf = perf_function(logits)
+        if np.isnan(perf):
+            perf = -np.inf
+        performance.append(perf)
+    print('\nDone!')
+    performance = np.array(performance)
+
+    # if mode == 'replace':
+    #     argsort_perf = np.argsort(performance)
+    # elif mode == 'keep':
+    #     argsort_perf = np.argsort(performance)[::-1]
+    # sorted_idx = testing_idx[argsort_perf]
+    # sorted_names = features[sorted_idx]
+    # sorted_perf = performance[argsort_perf]
+
+    return baseline, performance
