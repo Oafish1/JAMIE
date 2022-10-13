@@ -1,3 +1,7 @@
+# 4.1.3
+- Reruns
+- Small change to `evaluate_impact` background preview
+
 # 4.1.2
 - Reruns
 - Visualization updates

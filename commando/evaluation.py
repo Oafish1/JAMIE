@@ -1472,6 +1472,7 @@ def plot_impact(
     baseline,
     ylabel='LTA',
     max_features=None,
+    background_pct=.3,
     sort='mixed-min',
     color=None,
 ):
@@ -1489,7 +1490,7 @@ def plot_impact(
                 var1 = np.argsort(values)
             else:
                 assert False, f'Invalid sort method \'{sort}\' provided.'
-            var1 = var1[:int(num_features/3)]
+            var1 = var1[:int((1 - background_pct) * num_features)]
             var2 = np.random.choice(
                 list(set(list(range(len(values)))) - set(var1)),
                 num_features - len(var1),
@@ -1510,8 +1511,10 @@ def plot_impact(
     plt.xticks(rotation=80)
 
 
-def evaluate_impact(function, perf_function, in_data, features=None, mode='replace'):
+def evaluate_impact(function, perf_function, in_data, features=None, idx=None, mode='replace'):
     assert mode in ['replace', 'keep']
+
+    testing_idx = idx if idx is not None else np.array(range(in_data.shape[1]))
 
     in_data = in_data.copy()
     background = in_data.mean(0)
@@ -1525,8 +1528,6 @@ def evaluate_impact(function, perf_function, in_data, features=None, mode='repla
     best_perf = -np.inf
     best_str = ''
     check_best = 10
-    # testing_idx = np.random.choice(dataset[mod0].shape[1], int(1e3), replace=False)
-    testing_idx = np.array(range(in_data.shape[1]))
     for i, idx in enumerate(testing_idx):
         # CLI
         if (i+1) % check_best == 0 and len(performance) > 0:
