@@ -110,8 +110,6 @@ plt.savefig('../../img/simulation_integrated.png', dpi=300, bbox_inches='tight')
 
 ```python
 # Visualize imputed data
-from jamie.evaluation import plot_regular
-
 fig = plt.figure(figsize=(10, 5))
 plot_integrated([data1, data1_imputed], [type1, type1], ['Measured Modality 1', 'Imputed Modality 1'])
 plt.tight_layout()
