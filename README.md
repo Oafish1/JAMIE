@@ -32,7 +32,7 @@ pip install -e .
 pip install -r requirements-dev.txt
 ```
 
-## Example: Simulation Data
+## Example: Simulation Single-Cell Multi-Modal Data
 This example covers running JAMIE on branching manifold simulation data from [MMD-MA](https://pubmed.ncbi.nlm.nih.gov/34632462/) (Liu J. et al.).
 
 Load two data matrices with an optional prior correspondence matrix.

@@ -1,3 +1,7 @@
+# 4.1.6
+- Reruns
+- Small `README` changes
+
 # 4.1.5
 - Change name from `ComManDo` to `JAMIE`
 - Include data in repo
