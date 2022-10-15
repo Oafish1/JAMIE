@@ -1,3 +1,8 @@
+# 4.1.5
+- Change name from `ComManDo` to `JAMIE`
+- Include data in repo
+- `README.md` update
+
 # 4.1.4
 - Reruns
 - Run leave-one-out on COLO320DM

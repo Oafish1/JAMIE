@@ -5,13 +5,13 @@
 #    pip-compile
 #
 adjusttext==0.7.3
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 anndata==0.8.0
     # via
-    #   ComManDo (setup.py)
+    #   JAMIE (setup.py)
     #   scanpy
 brokenaxes==0.5.0
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 cycler==0.10.0
     # via matplotlib
 h5py==3.6.0
@@ -31,7 +31,7 @@ llvmlite==0.38.0
     #   pynndescent
 matplotlib==3.4.3
     # via
-    #   ComManDo (setup.py)
+    #   JAMIE (setup.py)
     #   adjusttext
     #   brokenaxes
     #   scanpy
@@ -51,7 +51,7 @@ numexpr==2.8.1
     # via tables
 numpy==1.21.2
     # via
-    #   ComManDo (setup.py)
+    #   JAMIE (setup.py)
     #   adjusttext
     #   anndata
     #   h5py
@@ -103,7 +103,7 @@ python-dateutil==2.8.2
 pytz==2022.1
     # via pandas
 scanpy==1.8.2
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 scikit-learn==1.0
     # via
     #   pynndescent
@@ -112,10 +112,10 @@ scikit-learn==1.0
     #   sklearn
     #   umap-learn
 scikit-learn-extra==0.2.0
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 scipy==1.7.1
     # via
-    #   ComManDo (setup.py)
+    #   JAMIE (setup.py)
     #   anndata
     #   pynndescent
     #   scanpy
@@ -134,7 +134,7 @@ six==1.16.0
     #   patsy
     #   python-dateutil
 sklearn==0.0
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 statsmodels==0.13.2
     # via scanpy
 stdlib-list==0.8.0
@@ -145,10 +145,10 @@ threadpoolctl==3.0.0
     # via scikit-learn
 torch==1.9.1
     # via
-    #   ComManDo (setup.py)
+    #   JAMIE (setup.py)
     #   torchvision
 torchvision==0.10.1
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 tqdm==4.63.1
     # via
     #   scanpy
@@ -156,11 +156,11 @@ tqdm==4.63.1
 typing-extensions==3.10.0.2
     # via torch
 umap==0.1.1
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 umap-learn==0.5.2
     # via scanpy
 unioncom==0.4.0
-    # via ComManDo (setup.py)
+    # via JAMIE (setup.py)
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

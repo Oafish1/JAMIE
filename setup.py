@@ -1,13 +1,13 @@
 from setuptools import find_packages, setup
 
-with open('commando/_meta.py') as version_file:
+with open('jamie/_meta.py') as version_file:
     exec(version_file.read())
 
 with open('README.md') as r:
     readme = r.read()
 
 setup(
-    name='ComManDo',
+    name='JAMIE',
     description=readme,
     version=__version__,
     packages=find_packages(exclude=('tests')),

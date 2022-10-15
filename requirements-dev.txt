@@ -6,85 +6,274 @@
 #
 -e file:.
     # via -r requirements-dev.in
+absl-py==1.3.0
+    # via
+    #   tensorboard
+    #   tensorflow
 adjusttext==0.7.3
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
 anndata==0.8.0
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
     #   scanpy
+anyio==3.6.1
+    # via jupyter-server
+argon2-cffi==21.3.0
+    # via
+    #   jupyter-server
+    #   nbclassic
+    #   notebook
+argon2-cffi-bindings==21.2.0
+    # via argon2-cffi
+asttokens==2.0.8
+    # via stack-data
+astunparse==1.6.3
+    # via tensorflow
 attrs==21.2.0
-    # via pytest
+    # via
+    #   jsonschema
+    #   pytest
+babel==2.10.3
+    # via jupyterlab-server
+backcall==0.2.0
+    # via ipython
+beautifulsoup4==4.11.1
+    # via nbconvert
+bleach==5.0.1
+    # via nbconvert
 brokenaxes==0.5.0
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
+cachetools==5.2.0
+    # via google-auth
+certifi==2022.9.24
+    # via requests
+cffi==1.15.1
+    # via argon2-cffi-bindings
+charset-normalizer==2.1.1
+    # via requests
 click==8.0.1
     # via pip-tools
+cloudpickle==2.2.0
+    # via shap
 coverage[toml]==6.0
     # via pytest-cov
 cycler==0.10.0
     # via
     #   -c requirements.txt
     #   matplotlib
+debugpy==1.6.3
+    # via ipykernel
+decorator==5.1.1
+    # via ipython
+defusedxml==0.7.1
+    # via nbconvert
+entrypoints==0.4
+    # via jupyter-client
 et-xmlfile==1.1.0
     # via openpyxl
+executing==1.1.1
+    # via stack-data
+fastjsonschema==2.16.2
+    # via nbformat
 flake8==3.9.2
     # via
-    #   commando
     #   flake8-docstrings
+    #   jamie
 flake8-docstrings==1.6.0
-    # via commando
+    # via jamie
 flake8-import-order==0.18.1
-    # via commando
+    # via jamie
+flatbuffers==22.9.24
+    # via tensorflow
+gast==0.4.0
+    # via tensorflow
+google-auth==2.12.0
+    # via
+    #   google-auth-oauthlib
+    #   tensorboard
+google-auth-oauthlib==0.4.6
+    # via tensorboard
+google-pasta==0.2.0
+    # via tensorflow
+grpcio==1.49.1
+    # via
+    #   tensorboard
+    #   tensorflow
 h5py==3.6.0
     # via
     #   -c requirements.txt
     #   anndata
     #   scanpy
+    #   tensorflow
+idna==3.4
+    # via
+    #   anyio
+    #   requests
+importlib-metadata==5.0.0
+    # via
+    #   jupyterlab-server
+    #   markdown
+    #   nbconvert
 iniconfig==1.1.1
     # via pytest
+ipykernel==6.16.0
+    # via
+    #   ipywidgets
+    #   nbclassic
+    #   notebook
+ipython==8.5.0
+    # via
+    #   ipykernel
+    #   ipywidgets
+    #   jupyterlab
+ipython-genutils==0.2.0
+    # via
+    #   nbclassic
+    #   notebook
+ipywidgets==8.0.2
+    # via jamie
+jedi==0.18.1
+    # via ipython
+jinja2==3.1.2
+    # via
+    #   jupyter-server
+    #   jupyterlab
+    #   jupyterlab-server
+    #   nbclassic
+    #   nbconvert
+    #   notebook
 joblib==1.0.1
     # via
     #   -c requirements.txt
     #   pynndescent
     #   scanpy
     #   scikit-learn
+json5==0.9.10
+    # via jupyterlab-server
+jsonschema==4.16.0
+    # via
+    #   jupyterlab-server
+    #   nbformat
+jupyter-client==7.4.2
+    # via
+    #   ipykernel
+    #   jupyter-server
+    #   nbclassic
+    #   nbclient
+    #   notebook
+jupyter-core==4.11.1
+    # via
+    #   jupyter-client
+    #   jupyter-server
+    #   jupyterlab
+    #   nbclassic
+    #   nbconvert
+    #   nbformat
+    #   notebook
+jupyter-server==1.21.0
+    # via
+    #   jupyterlab
+    #   jupyterlab-server
+    #   nbclassic
+    #   notebook-shim
+jupyterlab==3.4.8
+    # via jamie
+jupyterlab-pygments==0.2.2
+    # via nbconvert
+jupyterlab-server==2.16.0
+    # via jupyterlab
+jupyterlab-widgets==3.0.3
+    # via ipywidgets
+keras==2.10.0
+    # via tensorflow
+keras-preprocessing==1.1.2
+    # via tensorflow
 kiwisolver==1.3.2
     # via
     #   -c requirements.txt
     #   matplotlib
+libclang==14.0.6
+    # via tensorflow
 llvmlite==0.38.0
     # via
     #   -c requirements.txt
     #   numba
     #   pynndescent
+markdown==3.4.1
+    # via tensorboard
+markupsafe==2.1.1
+    # via
+    #   jinja2
+    #   nbconvert
+    #   werkzeug
 matplotlib==3.4.3
     # via
     #   -c requirements.txt
     #   adjusttext
     #   brokenaxes
-    #   commando
+    #   jamie
+    #   mmd-wrapper
     #   scanpy
     #   seaborn
+matplotlib-inline==0.1.6
+    # via
+    #   ipykernel
+    #   ipython
 mccabe==0.6.1
     # via flake8
+mistune==2.0.4
+    # via nbconvert
+mmd-wrapper @ git+https://git@github.com/Oafish1/WR2MD
+    # via jamie
 natsort==8.1.0
     # via
     #   -c requirements.txt
     #   anndata
     #   scanpy
+nbclassic==0.4.5
+    # via
+    #   jupyterlab
+    #   notebook
+nbclient==0.7.0
+    # via nbconvert
+nbconvert==7.2.1
+    # via
+    #   jupyter-server
+    #   nbclassic
+    #   notebook
+nbformat==5.7.0
+    # via
+    #   jupyter-server
+    #   nbclassic
+    #   nbclient
+    #   nbconvert
+    #   notebook
+nest-asyncio==1.5.6
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   nbclassic
+    #   nbclient
+    #   notebook
 networkx==2.7.1
     # via
     #   -c requirements.txt
     #   scanpy
+notebook==6.5.1
+    # via jupyterlab
+notebook-shim==0.1.0
+    # via nbclassic
 numba==0.55.1
     # via
     #   -c requirements.txt
     #   pynndescent
     #   scanpy
+    #   shap
     #   umap-learn
 numexpr==2.8.1
     # via
@@ -95,11 +284,13 @@ numpy==1.21.2
     #   -c requirements.txt
     #   adjusttext
     #   anndata
-    #   commando
     #   h5py
+    #   jamie
+    #   keras-preprocessing
     #   matplotlib
     #   numba
     #   numexpr
+    #   opt-einsum
     #   pandas
     #   patsy
     #   scanpy
@@ -107,28 +298,48 @@ numpy==1.21.2
     #   scikit-learn-extra
     #   scipy
     #   seaborn
+    #   shap
     #   statsmodels
     #   tables
+    #   tensorboard
+    #   tensorflow
     #   torchvision
     #   umap-learn
+oauthlib==3.2.1
+    # via requests-oauthlib
 openpyxl==3.0.10
-    # via commando
+    # via jamie
+opt-einsum==3.3.0
+    # via tensorflow
 packaging==21.3
     # via
     #   -c requirements.txt
     #   anndata
+    #   ipykernel
+    #   jupyter-server
+    #   jupyterlab
+    #   jupyterlab-server
+    #   nbconvert
     #   numexpr
     #   pytest
     #   scanpy
+    #   shap
     #   statsmodels
     #   tables
+    #   tensorflow
 pandas==1.4.1
     # via
     #   -c requirements.txt
     #   anndata
+    #   jamie
     #   scanpy
     #   seaborn
+    #   shap
     #   statsmodels
+pandocfilters==1.5.0
+    # via nbconvert
+parso==0.8.3
+    # via jedi
 patsy==0.5.2
     # via
     #   -c requirements.txt
@@ -136,25 +347,60 @@ patsy==0.5.2
     #   statsmodels
 pep517==0.11.0
     # via pip-tools
+pexpect==4.8.0
+    # via ipython
+pickleshare==0.7.5
+    # via ipython
 pillow==8.3.2
     # via
     #   -c requirements.txt
     #   matplotlib
     #   torchvision
 pip-tools==6.3.0
-    # via commando
+    # via jamie
 pluggy==1.0.0
     # via pytest
+prometheus-client==0.15.0
+    # via
+    #   jupyter-server
+    #   nbclassic
+    #   notebook
+prompt-toolkit==3.0.31
+    # via ipython
+protobuf==3.19.6
+    # via
+    #   tensorboard
+    #   tensorflow
+psutil==5.9.2
+    # via ipykernel
+ptyprocess==0.7.0
+    # via
+    #   pexpect
+    #   terminado
+pure-eval==0.2.2
+    # via stack-data
 py==1.10.0
     # via pytest
+pyasn1==0.4.8
+    # via
+    #   pyasn1-modules
+    #   rsa
+pyasn1-modules==0.2.8
+    # via google-auth
 pycodestyle==2.7.0
     # via
     #   flake8
     #   flake8-import-order
+pycparser==2.21
+    # via cffi
 pydocstyle==6.1.1
     # via flake8-docstrings
 pyflakes==2.3.1
     # via flake8
+pygments==2.13.0
+    # via
+    #   ipython
+    #   nbconvert
 pynndescent==0.5.6
     # via
     #   -c requirements.txt
@@ -164,53 +410,85 @@ pyparsing==2.4.7
     #   -c requirements.txt
     #   matplotlib
     #   packaging
+pyrsistent==0.18.1
+    # via jsonschema
 pytest==6.2.5
     # via
-    #   commando
+    #   jamie
     #   pytest-cov
 pytest-cov==3.0.0
-    # via commando
+    # via jamie
 python-dateutil==2.8.2
     # via
     #   -c requirements.txt
+    #   jupyter-client
     #   matplotlib
     #   pandas
 pytz==2022.1
     # via
     #   -c requirements.txt
+    #   babel
     #   pandas
+pyzmq==24.0.1
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   jupyter-server
+    #   nbclassic
+    #   notebook
+requests==2.28.1
+    # via
+    #   jupyterlab-server
+    #   requests-oauthlib
+    #   tensorboard
+requests-oauthlib==1.3.1
+    # via google-auth-oauthlib
+rsa==4.9
+    # via google-auth
 scanpy==1.8.2
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
 scikit-learn==1.0
     # via
     #   -c requirements.txt
+    #   mmd-wrapper
     #   pynndescent
     #   scanpy
     #   scikit-learn-extra
+    #   shap
     #   sklearn
     #   umap-learn
 scikit-learn-extra==0.2.0
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
 scipy==1.7.1
     # via
     #   -c requirements.txt
     #   anndata
-    #   commando
+    #   jamie
+    #   mmd-wrapper
     #   pynndescent
     #   scanpy
     #   scikit-learn
     #   scikit-learn-extra
     #   seaborn
+    #   shap
     #   statsmodels
     #   umap-learn
 seaborn==0.11.2
     # via
     #   -c requirements.txt
+    #   jamie
     #   scanpy
+send2trash==1.8.0
+    # via
+    #   jupyter-server
+    #   nbclassic
+    #   notebook
+shap==0.41.0
+    # via jamie
 sinfo==0.3.4
     # via
     #   -c requirements.txt
@@ -218,15 +496,32 @@ sinfo==0.3.4
 six==1.16.0
     # via
     #   -c requirements.txt
+    #   asttokens
+    #   astunparse
+    #   bleach
     #   cycler
+    #   google-auth
+    #   google-pasta
+    #   grpcio
+    #   keras-preprocessing
     #   patsy
     #   python-dateutil
+    #   tensorflow
 sklearn==0.0
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
+    #   mmd-wrapper
+slicer==0.0.7
+    # via shap
+sniffio==1.3.0
+    # via anyio
 snowballstemmer==2.1.0
     # via pydocstyle
+soupsieve==2.3.2.post1
+    # via beautifulsoup4
+stack-data==0.5.1
+    # via ipython
 statsmodels==0.13.2
     # via
     #   -c requirements.txt
@@ -239,48 +534,121 @@ tables==3.7.0
     # via
     #   -c requirements.txt
     #   scanpy
+tensorboard==2.10.1
+    # via tensorflow
+tensorboard-data-server==0.6.1
+    # via tensorboard
+tensorboard-plugin-wit==1.8.1
+    # via tensorboard
+tensorflow==2.10.0
+    # via mmd-wrapper
+tensorflow-estimator==2.10.0
+    # via tensorflow
+tensorflow-io-gcs-filesystem==0.27.0
+    # via tensorflow
+termcolor==2.0.1
+    # via tensorflow
+terminado==0.16.0
+    # via
+    #   jupyter-server
+    #   nbclassic
+    #   notebook
 threadpoolctl==3.0.0
     # via
     #   -c requirements.txt
     #   scikit-learn
+tinycss2==1.1.1
+    # via nbconvert
 toml==0.10.2
     # via pytest
 tomli==1.2.1
     # via
     #   coverage
+    #   jupyterlab
     #   pep517
 torch==1.9.1
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
+    #   mmd-wrapper
     #   torchvision
 torchvision==0.10.1
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
+    #   mmd-wrapper
+tornado==6.2
+    # via
+    #   ipykernel
+    #   jupyter-client
+    #   jupyter-server
+    #   jupyterlab
+    #   nbclassic
+    #   notebook
+    #   terminado
 tqdm==4.63.1
     # via
     #   -c requirements.txt
     #   scanpy
+    #   shap
     #   umap-learn
+traitlets==5.4.0
+    # via
+    #   ipykernel
+    #   ipython
+    #   ipywidgets
+    #   jupyter-client
+    #   jupyter-core
+    #   jupyter-server
+    #   matplotlib-inline
+    #   nbclassic
+    #   nbclient
+    #   nbconvert
+    #   nbformat
+    #   notebook
 typing-extensions==3.10.0.2
     # via
     #   -c requirements.txt
+    #   tensorflow
     #   torch
 umap==0.1.1
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
+    #   mmd-wrapper
 umap-learn==0.5.2
     # via
     #   -c requirements.txt
+    #   mmd-wrapper
     #   scanpy
 unioncom==0.4.0
     # via
     #   -c requirements.txt
-    #   commando
+    #   jamie
+    #   mmd-wrapper
+urllib3==1.26.12
+    # via requests
+wcwidth==0.2.5
+    # via prompt-toolkit
+webencodings==0.5.1
+    # via
+    #   bleach
+    #   tinycss2
+websocket-client==1.4.1
+    # via jupyter-server
+werkzeug==2.2.2
+    # via tensorboard
 wheel==0.37.0
-    # via pip-tools
+    # via
+    #   astunparse
+    #   pip-tools
+    #   tensorboard
+widgetsnbextension==4.0.3
+    # via ipywidgets
+wrapt==1.14.1
+    # via tensorflow
+zipp==3.9.0
+    # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip
