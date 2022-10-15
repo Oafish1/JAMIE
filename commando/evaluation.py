@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy import stats
-from scipy.spatial import distance
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import f_regression, r_regression
@@ -21,7 +20,8 @@ import umap
 
 from .commando import ComManDo
 from .utilities import (
-    ensure_list, outliers, predict_nn, set_yticks, sort_by_interest, SimpleJAMIEModel)
+    ensure_list, jensen_shannon_from_array, outliers, predict_nn,
+    set_yticks, sort_by_interest, SimpleJAMIEModel)
 
 
 def test_partial(
@@ -1034,15 +1034,18 @@ def plot_accuracy_graph(data, labels, names, colors=None, shapes=None):
             acc_dict['LTA'].append(lta)
     df = pd.DataFrame(acc_dict)
     df.index = df['Algorithm']
-    df = df[set(df.columns) - {'Algorithm'}]
+    df = df[list(set(df.columns) - {'Algorithm'})]
     df = df.transpose()
+
+    # Reporting
+    print(df)
 
     # Calculate discontinuities
     bounds = []
     for vals in [df.transpose()['FOSCTTM'], df.transpose()['LTA']]:
         bounds.append([])
         max_dist = .2
-        pad = .1
+        pad = .095
 
         sorted_vals = np.sort(vals)
         min_val = sorted_vals[0]
@@ -1062,8 +1065,8 @@ def plot_accuracy_graph(data, labels, names, colors=None, shapes=None):
     bax = brokenaxes(
         xlims=bounds[0],
         ylims=bounds[1],
-        hspace=.05,
-        wspace=.05,
+        hspace=.15,
+        wspace=.15,
     )
     for col, c, m in zip(df.columns, colors, shapes):
         bax.scatter(df[col]['FOSCTTM'], df[col]['LTA'], c=c, marker=m, s=200.)
@@ -1219,7 +1222,7 @@ def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot
         ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
         lcolor='red'
 
-    ax.set_title(f'{suptitle} for {modal_name}')
+    ax.set_title(f'{suptitle} - {modal_name}')
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
 
@@ -1236,12 +1239,12 @@ def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot
     les = sum(np.greater(feat[0], feat[1]))
     ax.text(.95, .2, les, ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
     n = gre + les  # len(feat[0]) doesn't account for NAs
-    # Null hypothesis - equal methods (two-tailed)
-    # p_value = 2 * sum(math.comb(n, i) * .5**n for i in range(n+1) if i >= gre)
+    # NULL hypothesis 50/50, one-tailed
     p_value = sum(2**(math.log(math.comb(n, i), 2) - n) for i in range(n+1) if i >= gre)
     if p_value > .5:
         p_value = 1 - p_value
     p_value *= 2
+    # p_value = stats.ranksums(*feat, 'less')[1]
     ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
 
 
@@ -1301,6 +1304,10 @@ def plot_distribution_alone(
         for j in range(len(fnames[i])):
             if fnames[i][j] in feature_dict:
                 fnames[i][j] = feature_dict[fnames[i][j]]
+
+    # Reporting
+    for i in range(datasets[0].shape[1]):
+        print(f'{fnames[0][i]}: {jensen_shannon_from_array([d[:, i] for d in datasets])}')
 
     # Distribution preview
     axs = []
@@ -1416,15 +1423,10 @@ def plot_distribution_similarity(
     for l in np.unique(labels):
         distances[l] = []
         for f in feat_idx:
-            data_all = [datasets[j][:, f] for j in range(len(datasets))]
-            data = [np.array(datasets[j][labels[j] == l, f]) for j in range(len(datasets))]
-            if relative and (np.max(data_all[0]) - np.min(data_all[0])) != 0 and (np.max(data_all[1]) - np.min(data_all[1])) != 0:
-                data = [(d - np.min(data_all[i])) / (np.max(data_all[i]) - np.min(data_all[i])) for i, d in enumerate(data)]
-            X = np.linspace(np.min(data), np.max(data), 1000)
-            data = [np.histogram(data[j], bins='auto') for j in range(len(datasets))]
-            data = [stats.rv_histogram(data[j]) for j in range(len(datasets))]
-            data = [[data[j].pdf(x) for x in X] for j in range(len(datasets))]
-            dist = distance.jensenshannon(*data)
+            dist = jensen_shannon_from_array([datasets[i][labels[i] == l, f] for i in range(len(datasets))])
+            # Cast nan to 0 for visualization
+            if np.isnan(dist):
+                dist = 1
             distances[l].append(1 - dist)
 
     # Sort by performance
@@ -1433,6 +1435,11 @@ def plot_distribution_similarity(
         total += np.array(v)
     total /= len(distances.keys())
     sort_idx = np.argsort(total)[::-1]
+
+    # Reporting
+    all_values = np.concatenate(list(distances.values()))
+    print(f'Mean: {1 - np.mean(all_values)}')
+    print(f'Std: {np.std(np.concatenate(list(distances.values())))}')
 
     # Plot
     for l, v in distances.items():
@@ -1475,6 +1482,7 @@ def plot_impact(
     background_pct=.3,
     sort='mixed-min',
     color=None,
+    max_name_len=10,
 ):
     num_features = len(values) if max_features is None else max_features
     num_features = min(len(values), num_features)
@@ -1503,15 +1511,19 @@ def plot_impact(
         fnames = fnames[sort]
     values = values[:num_features]
     fnames = fnames[:num_features]
+    fnames = [f[:max_name_len] for f in fnames]
 
     ax = plt.gcf().add_subplot(1, 1, 1)
     sns.barplot(x=fnames, y=values, ax=ax, color=color)
     ax.axhline(y=baseline, color='red', linewidth=3)
     ax.set_ylabel(ylabel)
+    yrange = max(values) - min(values)
+    ymin, ymax = max(min(values) - 1. * yrange, 0), min(max(values) + 1. * yrange, 1)
+    ax.set_ylim([ymin, ymax])
     plt.xticks(rotation=80)
 
 
-def evaluate_impact(function, perf_function, in_data, features=None, idx=None, mode='replace'):
+def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', scan=None, scan_samples=500):
     assert mode in ['replace', 'keep']
 
     testing_idx = idx if idx is not None else np.array(range(in_data.shape[1]))
@@ -1521,13 +1533,28 @@ def evaluate_impact(function, perf_function, in_data, features=None, idx=None, m
 
     # Calculate baseline
     logits = function(in_data)
-    baseline = perf_function(logits)
+    baseline = perf_function(logits, true)
 
+    if scan is not None:
+        print('Performing preliminary scan...')
+        sample_idx = np.random.choice(in_data.shape[0], scan_samples, replace=False)
+        true_mini = true[sample_idx] if true is not None else None
+        performance = _evaluate_impact_helper(function, perf_function, in_data[sample_idx, :], true_mini, background, baseline, testing_idx, mode, features=features)
+        if mode == 'keep':
+            performance = -performance
+        testing_idx = testing_idx[np.argsort(testing_idx)[:scan]]
+    print('Finding important features...')
+    performance = _evaluate_impact_helper(function, perf_function, in_data, true, background, baseline, testing_idx, mode, features=features)
+    print('Done!')
+
+    return baseline, performance, testing_idx
+
+
+def _evaluate_impact_helper(function, perf_function, in_data, true, background, baseline, testing_idx, mode, features=None, check_best=10):
     performance = []
     best_idx = -1
     best_perf = -np.inf
     best_str = ''
-    check_best = 10
     for i, idx in enumerate(testing_idx):
         # CLI
         if (i+1) % check_best == 0 and len(performance) > 0:
@@ -1563,19 +1590,9 @@ def evaluate_impact(function, perf_function, in_data, features=None, idx=None, m
         # Record
         # perf = stats.pearsonr(logits, out_data)[0]  # Imputation
         # perf = logits  # LTA
-        perf = perf_function(logits)
+        perf = perf_function(logits, true)
         if np.isnan(perf):
             perf = -np.inf
         performance.append(perf)
-    print('\nDone!')
-    performance = np.array(performance)
-
-    # if mode == 'replace':
-    #     argsort_perf = np.argsort(performance)
-    # elif mode == 'keep':
-    #     argsort_perf = np.argsort(performance)[::-1]
-    # sorted_idx = testing_idx[argsort_perf]
-    # sorted_names = features[sorted_idx]
-    # sorted_perf = performance[argsort_perf]
-
-    return baseline, performance
+    print()
+    return np.array(performance)

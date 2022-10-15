@@ -5,6 +5,8 @@ from time import perf_counter
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
+from scipy.spatial import distance
+from sklearn import preprocessing
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.neighbors import KNeighborsRegressor
@@ -500,6 +502,11 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
         for i in range(datasets[0].shape[1])])
     corr_arr[np.isnan(corr_arr)] = -1
 
+    # # Unique
+    # uniq_arr = np.array([
+    #     len(np.unique(datasets[0][:, i]))
+    #     for i in range(datasets[0].shape[1])])
+
     # # MSE
     # dist_arr = np.array([
     #     np.mean(np.sum((datasets[0][:, i] - datasets[1][:, i])**2))
@@ -517,7 +524,7 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
     # ks_arr[np.isnan(ks_arr)] = 1
 
     # Order
-    temp_order = np.argsort(5e-1*np.log(1+entropy_arr) + corr_arr)[::-1]
+    temp_order = np.argsort(5e-1*np.log(1+entropy_arr) + corr_arr)[::-1]  # + 1e-1*np.log(uniq_arr)
     # temp_order = np.argsort(ks_arr - 5e-2*np.log(entropy_arr))
 
     # Filter for interest and diversity
@@ -534,6 +541,7 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
         corr = [c for c in corr if not np.isnan(c)]
         if all(corr) or len(corr) == 0:
             feature_idx.append(i)
+    feature_idx = np.array(feature_idx)
 
     # By raw score, raw score and diversity
     # print(entropy_arr[temp_order])
@@ -552,6 +560,21 @@ def hash_kwargs(kwargs, dataset_name, dataset):
     size_str = '---'.join([dataset_name, '-'.join([str(s) for s in dataset[0].shape]), '-'.join([str(s) for s in dataset[1].shape])])
     hash_str = '---'.join([size_str, kwargs_str])
     return size_str, hash_str
+
+
+def jensen_shannon_from_array(datasets, resolution=1000, normalize=False):
+    data = [np.array(datasets[j]) for j in range(len(datasets))]
+    if normalize:
+        data = [preprocessing.scale(d, axis=0) for d in datasets]
+    # data_all = [datasets[j][:, f] for j in range(len(datasets))]
+    # if relative and (np.max(data_all[0]) - np.min(data_all[0])) != 0 and (np.max(data_all[1]) - np.min(data_all[1])) != 0:
+    #     data = [(d - np.min(data_all[i])) / (np.max(data_all[i]) - np.min(data_all[i])) for i, d in enumerate(data)]
+    X = np.linspace(np.min(data), np.max(data), resolution)
+    data = [np.histogram(data[j], bins='auto') for j in range(len(datasets))]
+    data = [stats.rv_histogram(data[j]) for j in range(len(datasets))]
+    data = [[data[j].pdf(x) for x in X] for j in range(len(datasets))]
+    dist = distance.jensenshannon(*data)
+    return dist
 
 
 class preclass:

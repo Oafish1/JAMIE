@@ -4,10 +4,14 @@
 #
 #    pip-compile
 #
+adjusttext==0.7.3
+    # via ComManDo (setup.py)
 anndata==0.8.0
     # via
     #   ComManDo (setup.py)
     #   scanpy
+brokenaxes==0.5.0
+    # via ComManDo (setup.py)
 cycler==0.10.0
     # via matplotlib
 h5py==3.6.0
@@ -28,6 +32,8 @@ llvmlite==0.38.0
 matplotlib==3.4.3
     # via
     #   ComManDo (setup.py)
+    #   adjusttext
+    #   brokenaxes
     #   scanpy
     #   seaborn
 natsort==8.1.0
@@ -46,6 +52,7 @@ numexpr==2.8.1
 numpy==1.21.2
     # via
     #   ComManDo (setup.py)
+    #   adjusttext
     #   anndata
     #   h5py
     #   matplotlib

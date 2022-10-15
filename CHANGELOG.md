@@ -1,3 +1,8 @@
+# 4.1.4
+- Reruns
+- Run leave-one-out on COLO320DM
+- Visualization changes and reporting
+
 # 4.1.3
 - Reruns
 - Small change to `evaluate_impact` background preview

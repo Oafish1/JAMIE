@@ -6,6 +6,10 @@
 #
 -e file:.
     # via -r requirements-dev.in
+adjusttext==0.7.3
+    # via
+    #   -c requirements.txt
+    #   commando
 anndata==0.8.0
     # via
     #   -c requirements.txt
@@ -13,6 +17,10 @@ anndata==0.8.0
     #   scanpy
 attrs==21.2.0
     # via pytest
+brokenaxes==0.5.0
+    # via
+    #   -c requirements.txt
+    #   commando
 click==8.0.1
     # via pip-tools
 coverage[toml]==6.0
@@ -21,6 +29,8 @@ cycler==0.10.0
     # via
     #   -c requirements.txt
     #   matplotlib
+et-xmlfile==1.1.0
+    # via openpyxl
 flake8==3.9.2
     # via
     #   commando
@@ -54,6 +64,8 @@ llvmlite==0.38.0
 matplotlib==3.4.3
     # via
     #   -c requirements.txt
+    #   adjusttext
+    #   brokenaxes
     #   commando
     #   scanpy
     #   seaborn
@@ -81,6 +93,7 @@ numexpr==2.8.1
 numpy==1.21.2
     # via
     #   -c requirements.txt
+    #   adjusttext
     #   anndata
     #   commando
     #   h5py
@@ -98,6 +111,8 @@ numpy==1.21.2
     #   tables
     #   torchvision
     #   umap-learn
+openpyxl==3.0.10
+    # via commando
 packaging==21.3
     # via
     #   -c requirements.txt
