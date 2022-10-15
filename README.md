@@ -22,18 +22,14 @@ conda create -n JAMIE python=3.9
 conda activate JAMIE
 ```
 
-Install dependencies with `pip`
+Install dependencies and the local library with `pip`
 ```bash
 # For general usage
 pip install -r requirements.txt
+pip install -e .
 
 # For example notebooks or development
 pip install -r requirements-dev.txt
-```
-
-Install the local library using `pip`
-```bash
-pip install -e .
 ```
 
 ## Example: Simulation Data
@@ -66,7 +62,7 @@ Several arguments may be passed to `JAMIE`, including:
 - `dropout`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` (default) for everything else
 - `debug`: Print individual loss values
 
-The model can be saved in an `h5` file format
+The model can be saved and loaded in an `h5` file format
 ```python
 # Save model
 jm.save_model('simulation_model.h5')
