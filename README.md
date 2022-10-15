@@ -5,7 +5,7 @@ Single-cell multi-modal datasets have emerged to measure various characteristics
 This library houses `JAMIE` along with several utility functions that aid in the evaluation of multi-modal integration and imputation techniques.  Paper figures are generated in `examples/notebooks` and source data can be found in `examples/data`.
 
 ## Installation Instructions
-First, clone and enter the repository
+First, clone and navigate to the repository
 ```bash
 git clone <JAMIE-github-link>
 cd JAMIE
@@ -33,6 +33,8 @@ pip install -r requirements-dev.txt
 ```
 
 ## Example: Simulation Data
+This example covers running JAMIE on branching manifold simulation data from [MMD-MA](https://pubmed.ncbi.nlm.nih.gov/34632462/) (Liu J. et al.).
+
 Load two data matrices with an optional prior correspondence matrix.
 ```python
 import numpy as np
@@ -119,3 +121,6 @@ plt.savefig('../../img/simulation_imputed.png', dpi=300, bbox_inches='tight')
 <img src="./img/simulation_imputed.png" alt="Integrated simulation data" width="700"/>
 
 More details on included plotting functions can be found in `examples/notebooks`.
+
+## Citations
+Liu J, Huang Y, Singh R, Vert JP, Noble WS. Jointly Embedding Multiple Single-Cell Omics Measurements. Algorithms Bioinform. 2019 Sep 3;143:10. doi: 10.4230/LIPIcs.WABI.2019.10. PMID: 34632462; PMCID: PMC8496402.
