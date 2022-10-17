@@ -1,6 +1,10 @@
+# 4.1.7
+- `README.md` updates
+- Reruns
+
 # 4.1.6
 - Reruns
-- Small `README` changes
+- Small `README.md` changes
 
 # 4.1.5
 - Change name from `ComManDo` to `JAMIE`

@@ -1,11 +1,11 @@
 # BABEL Data Run on COLO320DM
 The files needed are:
--`atac_rna_test_preds.h5ad`
--`rna_atac_test_preds.h5ad`
--`train_atac.h5ad`
--`train_rna.h5ad`
--`test_atac.h5ad`
--`test_rna.h5ad`
+- `atac_rna_test_preds.h5ad`
+- `rna_atac_test_preds.h5ad`
+- `train_atac.h5ad`
+- `train_rna.h5ad`
+- `test_atac.h5ad`
+- `test_rna.h5ad`
 
 The `h5ad` files may be generated using [BABEL](https://github.com/wukevin/babel), installing as directed, and running
 ```python

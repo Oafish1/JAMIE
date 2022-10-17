@@ -46,6 +46,26 @@ data2 = np.loadtxt("../data/Unioncom/MMD/s1_mapped2.txt")
 corr = np.eye(data1.shape[0], data2.shape[0])
 ```
 
+We can preview the data with `plot_regular`,
+```python
+import matplotlib.pyplot as plt
+from jamie.evaluation import plot_regular
+
+# Load cell-type labels
+type1 = np.loadtxt("../data/Unioncom/MMD/s1_type1.txt").astype(np.int)
+type2 = np.loadtxt("../data/Unioncom/MMD/s1_type2.txt").astype(np.int)
+type1 = np.array([f'Cell Type {i}' for i in type1])
+type2 = np.array([f'Cell Type {i}' for i in type2])
+
+# Visualize integrated latent spaces
+fig = plt.figure(figsize=(10, 5))
+plot_regular([data1, data2], [type1, type2], ['Modality 1', 'Modality 2'], legend=True)
+plt.tight_layout()
+plt.savefig('../../img/simulation_raw.png', dpi=300, bbox_inches='tight')
+```
+
+<img src="./img/simulation_raw.png" alt="Raw simulation single-cell multi-modal data" width="700"/>
+
 Create the `JAMIE` instance and integrate the datasets.
 ```python
 from jamie import JAMIE
@@ -55,14 +75,14 @@ integrated_data = jm.fit_transform(dataset=[data1, data2], P=corr)
 ```
 
 Several arguments may be passed to `JAMIE`, including:
-- `output_dim`: The number of latent features
-- `epoch_dnn`: Maximum number of epochs
-- `batch_size`: Batch size
-- `pca_dim`: If `None`, does not perform PCA.  Otherwise, takes an array of length 2 detailing the number of principal components to use while processing each input dataset
-- `use_early_stop`: If `True`, uses early stopping algorithm
-- `min_epochs`: Number of epochs before early stopping can take effect
-- `dropout`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` (default) for everything else
-- `debug`: Print individual loss values
+- `output_dim = 32`: The number of latent features.
+- `epoch_dnn = 10,000`: Maximum number of epochs.
+- `batch_size = 512`: Batch size
+- `pca_dim = [512, 512]`: If `None`, does not perform PCA.  Otherwise, controls the number of principal components to use while processing each input dataset
+- `use_early_stop = True`: If `True`, uses early stopping algorithm
+- `min_epochs = 2,500`: Number of epochs before early stopping can take effect.  Also controls the length of KL annealing
+- `dropout = 0.6`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` for everything else
+- `debug = False`: Print individual loss values if `True`
 
 The model can be saved and loaded in an `h5` file format
 ```python
@@ -90,23 +110,16 @@ data2_imputed = jm.modal_predict(data1, 0)
 
 For visualization, `JAMIE` includes `plot_integrated`, which uses `UMAP` to preview integrated or imputed data.
 ```python
-import matplotlib.pyplot as plt
 from jamie.evaluation import plot_integrated
-
-# Load cell-type labels
-type1 = np.loadtxt("../data/Unioncom/MMD/s1_type1.txt").astype(np.int)
-type2 = np.loadtxt("../data/Unioncom/MMD/s1_type2.txt").astype(np.int)
-type1 = np.array([f'Cell Type {i}' for i in type1])
-type2 = np.array([f'Cell Type {i}' for i in type2])
 
 # Visualize integrated latent spaces
 fig = plt.figure(figsize=(10, 5))
-plot_integrated(integrated_data, [type1, type2], ['Modality 1', 'Modality 2'], legend=True)
+plot_integrated(integrated_data, [type1, type2], ['Integrated Modality 1', 'Integrated Modality 2'])
 plt.tight_layout()
 plt.savefig('../../img/simulation_integrated.png', dpi=300, bbox_inches='tight')
 ```
 
-<img src="./img/simulation_integrated.png" alt="Integrated simulation data" width="700"/>
+<img src="./img/simulation_integrated.png" alt="Integrated simulation single-cell multi-modal data" width="700"/>
 
 ```python
 # Visualize imputed data
@@ -116,7 +129,7 @@ plt.tight_layout()
 plt.savefig('../../img/simulation_imputed.png', dpi=300, bbox_inches='tight')
 ```
 
-<img src="./img/simulation_imputed.png" alt="Integrated simulation data" width="700"/>
+<img src="./img/simulation_imputed.png" alt="Imputed simulation single-cell multi-modal data" width="700"/>
 
 More details on included plotting functions can be found in `examples/notebooks`.
 
