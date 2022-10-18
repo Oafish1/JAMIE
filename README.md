@@ -19,6 +19,7 @@ source env/bin/activate
 
 # conda
 # TODO: need to install under non-admin, otherwise stuck at import commando
+# TODO: test vscode
 conda create -n JAMIE python=3.9
 conda activate JAMIE
 ```
