@@ -76,6 +76,7 @@ packaging==21.3
     #   tables
 pandas==1.4.1
     # via
+    #   JAMIE (setup.py)
     #   anndata
     #   scanpy
     #   seaborn
@@ -123,7 +124,9 @@ scipy==1.7.1
     #   statsmodels
     #   umap-learn
 seaborn==0.11.2
-    # via scanpy
+    # via
+    #   JAMIE (setup.py)
+    #   scanpy
 sinfo==0.3.4
     # via scanpy
 six==1.16.0

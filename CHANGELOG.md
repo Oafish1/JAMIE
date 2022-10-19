@@ -1,4 +1,5 @@
 # 4.1.8
+- Import hierarchy fix
 - `umap-learn` import fix
 - `WR2MD` import versioning
 
