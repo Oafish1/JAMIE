@@ -228,7 +228,7 @@ mccabe==0.6.1
     # via flake8
 mistune==2.0.4
     # via nbconvert
-mmd-wrapper @ git+https://git@github.com/Oafish1/WR2MD
+git+https://git@github.com/Oafish1/WR2MD@v1.2.5
     # via jamie
 natsort==8.1.0
     # via
@@ -611,14 +611,10 @@ typing-extensions==3.10.0.2
     #   -c requirements.txt
     #   tensorflow
     #   torch
-umap==0.1.1
-    # via
-    #   -c requirements.txt
-    #   jamie
-    #   mmd-wrapper
 umap-learn==0.5.2
     # via
     #   -c requirements.txt
+    #   jamie
     #   mmd-wrapper
     #   scanpy
 unioncom==0.4.0

@@ -57,7 +57,6 @@ numpy==1.21.2
     #   h5py
     #   matplotlib
     #   numba
-    #   numexpr
     #   pandas
     #   patsy
     #   scanpy
@@ -72,7 +71,6 @@ numpy==1.21.2
 packaging==21.3
     # via
     #   anndata
-    #   numexpr
     #   scanpy
     #   statsmodels
     #   tables
@@ -155,10 +153,10 @@ tqdm==4.63.1
     #   umap-learn
 typing-extensions==3.10.0.2
     # via torch
-umap==0.1.1
-    # via JAMIE (setup.py)
 umap-learn==0.5.2
-    # via scanpy
+    # via
+    #   JAMIE (setup.py)
+    #   scanpy
 unioncom==0.4.0
     # via JAMIE (setup.py)
 

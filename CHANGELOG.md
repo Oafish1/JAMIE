@@ -1,3 +1,7 @@
+# 4.1.8
+- `umap-learn` import fix
+- `WR2MD` import versioning
+
 # 4.1.7
 - `README.md` updates
 - Reruns

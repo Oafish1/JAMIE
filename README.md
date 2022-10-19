@@ -131,7 +131,7 @@ plt.savefig('../../img/simulation_imputed.png', dpi=300, bbox_inches='tight')
 
 <img src="./img/simulation_imputed.png" alt="Imputed simulation single-cell multi-modal data" width="700"/>
 
-More details on included plotting functions can be found in `examples/notebooks`.
+Detailed comparisons and additional visualization functions can be found in `examples/notebooks`.
 
 ## Citations
 Liu J, Huang Y, Singh R, Vert JP, Noble WS. Jointly Embedding Multiple Single-Cell Omics Measurements. Algorithms Bioinform. 2019 Sep 3;143:10. doi: 10.4230/LIPIcs.WABI.2019.10. PMID: 34632462; PMCID: PMC8496402.

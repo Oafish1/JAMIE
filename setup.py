@@ -8,7 +8,10 @@ with open('README.md') as r:
 
 setup(
     name='JAMIE',
-    description=readme,
+    author='Noah Cohen Kalafut',
+    description='Joint Autoencoders for Multi-Modal Imputation and Embedding',
+    long_description=readme,
+    long_description_content_type="text/markdown",
     version=__version__,
     packages=find_packages(exclude=('tests')),
     install_requires=[
@@ -23,7 +26,7 @@ setup(
         'sklearn',
         'torch',
         'torchvision',
-        'umap',
+        'umap-learn',
         'unioncom',
     ],
     extras_require={
@@ -39,7 +42,7 @@ setup(
         'notebooks': [
             'ipywidgets',
             'jupyterlab',
-            'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD',
+            'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD@v1.2.5',
             'pandas',
             'seaborn',
             'shap',
