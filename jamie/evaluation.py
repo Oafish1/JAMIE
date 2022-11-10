@@ -147,6 +147,7 @@ def plot_integrated(
     square=False,
     method='umap',
     n_neighbors=None,
+    seed=42,
 ):
     """Plot integrated data"""
     assert method in ('pca', 'umap')
@@ -168,7 +169,8 @@ def plot_integrated(
                 red = umap.UMAP(
                     n_components=n_components,
                     n_neighbors=min(200, dat.shape[0] - 1) if n_neighbors is None else n_neighbors,
-                    min_dist=.5)
+                    min_dist=.5,
+                    random_state=seed)
                 if separate_dim:
                     red.fit(dat)
                 else:

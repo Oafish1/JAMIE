@@ -1,3 +1,6 @@
+# 4.2.1
+- Reproducibility for UMAP
+
 # 4.2.0
 - Added `GNU GPL V3.0` License
 - Better sampling during training

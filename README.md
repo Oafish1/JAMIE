@@ -39,6 +39,11 @@ This process usually takes around 5 minutes.
 ## Example: Simulation Single-Cell Multi-Modal Data
 This example covers running JAMIE on branching manifold simulation data from [MMD-MA](https://pubmed.ncbi.nlm.nih.gov/34632462/) (Liu J. et al.).  The example takes around 2 minutes to run.  A notebook with this code may be found at `examples/notebooks/sample.ipynb`.
 
+Optionally, start Jupyter Lab and create a new notebook in `JAMIE/examples/notebooks`
+```bash
+jupyter lab
+```
+
 Load two data matrices with an optional prior correspondence matrix.
 ```python
 import numpy as np
