@@ -1,8 +1,10 @@
 # 4.2.0
+- Added `GNU GPL V3.0` License
 - Better sampling during training
 - Delete `generate_plot` class
 - File structure revisions
 - Raw ephys testing
+- `README` updates
 - Reproducibility for SHAP
 
 # 4.1.8
