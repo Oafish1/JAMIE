@@ -407,11 +407,6 @@ class JAMIE(uc.UnionCom):
             else:
                 self.P = np.zeros((self.row[0], self.row[1]))
 
-        if self.P.shape[0] == self.P.shape[1] and np.abs(self.P - np.eye(self.row[0])).sum() == 0:
-            self.perfect_alignment = True
-        else:
-            self.perfect_alignment = False
-
         self.P = torch.Tensor(self.P).float().to(self.device)
         self.F = torch.Tensor(W[0][1]).float().to(self.device)
 
@@ -498,6 +493,15 @@ class JAMIE(uc.UnionCom):
             len_dataloader = 1
             self.batch_size = np.max(self.row)
 
+        # Sampling method setup
+        if self.P.shape[0] == self.P.shape[1] and np.abs(self.P - np.eye(self.row[0])).sum() == 0:
+            self.sampling_method = 'diag'
+        elif np.abs(self.P).sum() != 0:
+            self.sampling_method = 'hybrid'
+            self.true_ratio = sum(self.P.sum(axis=i) > 0 for i in range(len(self.P.shape))) / sum(self.P.shape)
+        else:
+            self.sampling_method = 'zeros'
+
         # Early stopping setup
         best_running_loss = np.inf
         streak = 0
@@ -510,15 +514,36 @@ class JAMIE(uc.UnionCom):
             for batch_idx in range(len_dataloader):
                 batch_loss = 0
 
-                # Random samples
-                if self.perfect_alignment:
+                # Random samples (asdf test)
+                if self.sampling_method == 'diag':
+                    # Sample from diagonal
                     set_rand = np.random.choice(range(self.row[i]), self.batch_size, replace=False)
-                random_batch = [
-                    set_rand if self.perfect_alignment else
-                    np.random.choice(range(self.row[i]), self.batch_size, replace=False)
-                    # np.random.choice(range(self.row[i]), self.batch_size - i, replace=False)
-                    for i in range(self.dataset_num)
-                ]
+                    random_batch = [set_rand for i in range(self.dataset_num)]
+                elif self.sampling_method == 'hybrid':
+                    # Sample from nonzero corr
+                    true_ratio = 1.
+                    corr_sample_num = np.sum(np.random.rand(self.batch_size) < true_ratio)
+                    non_sample_num = self.batch_size - corr_sample_num
+
+                    # Choose corresponding samples
+                    nonzero_idx = np.argwhere(self.P > 0)
+                    corr_idx = np.random.choice(len(nonzero_idx), corr_sample_num, replace=False)
+                    random_batch = [nonzero_idx[corr_idx][:, i] for i in range(self.dataset_num)]
+
+                    # Choose non-corresponding samples
+                    random_batch = [
+                        np.concatenate([
+                            idx, np.random.choice(range(self.row[i]), non_sample_num, replace=False)
+                        ], axis=0)
+                        for i, idx in enumerate(random_batch)]
+
+                elif self.sampling_method == 'zeros':
+                    # Sample randomly
+                    random_batch = [
+                        np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                        for i in range(self.dataset_num)]
+                else:
+                    raise Exception(f'Sampling method {self.sampling_method} does not exist')
                 data = [self.dataset[i][random_batch[i]] for i in range(self.dataset_num)]
 
                 # P setup

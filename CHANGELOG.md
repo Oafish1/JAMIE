@@ -1,3 +1,10 @@
+# 4.2.0
+- Better sampling during training
+- Delete `generate_plot` class
+- File structure revisions
+- Raw ephys testing
+- Reproducibility for SHAP
+
 # 4.1.8
 - Import hierarchy fix
 - `umap-learn` import fix
