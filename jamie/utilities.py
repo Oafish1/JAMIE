@@ -552,13 +552,27 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
 
 
 def hash_kwargs(kwargs, dataset_name, dataset):
+    """Create a string representing non-standard args"""
+    DEFAULT_KWARGS = {
+        'output_dim': 32,
+        'epoch_DNN': 10000,
+        'min_epochs': 2500,
+        'log_DNN': 500,
+        'use_early_stop': True,
+        'batch_size': 512,
+        'pca_dim': 2*[512],
+        'dist_method': 'euclidean',
+        'loss_weights': [1,1,1,1],
+        'dropout': .6,
+    }
     fromChar = [' ', '),', '(', ')', ',', '\'', '[', ']']
     toChar = ['', '--', '', '', '-', '', '(', ')']
-    kwargs_str = str(sorted(kwargs.items()))[1:-1]
+    # Hard-coded to only accept known arguments
+    kwargs_str = str([kv for kv in sorted(kwargs.items()) if kv[1] != DEFAULT_KWARGS[kv[0]]])[1:-1]
     for f, t in zip(fromChar, toChar):
         kwargs_str = kwargs_str.replace(f, t)
     size_str = '---'.join([dataset_name, '-'.join([str(s) for s in dataset[0].shape]), '-'.join([str(s) for s in dataset[1].shape])])
-    hash_str = '---'.join([size_str, kwargs_str])
+    hash_str = '---'.join([size_str, kwargs_str]) if len(kwargs_str) > 0 else size_str
     return size_str, hash_str
 
 

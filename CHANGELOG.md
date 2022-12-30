@@ -1,3 +1,14 @@
+# 4.2.2
+- Added loss logging
+- Additional runs
+ - Alternative phenotypes
+ - Tuning
+- Bugfixes
+- More runs with partial correspondence
+- Reorganization of notebooks
+- Reruns
+- Revised hashing function
+
 # 4.2.1
 - Reproducibility for UMAP
 

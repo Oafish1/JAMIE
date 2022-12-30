@@ -38,7 +38,7 @@ class JAMIE(uc.UnionCom):
     def __init__(
         self,
         match_result=None,
-        PF_Ratio=1,
+        PF_Ratio=None,
         corr_method='unioncom',
         dist_method='euclidean',
         in_place=False,
@@ -56,6 +56,7 @@ class JAMIE(uc.UnionCom):
         max_steps_without_increment=500,
         debug=False,
         log_debug=100,
+        record_loss=True,
         **kwargs
     ):
         self.match_result = match_result
@@ -79,6 +80,7 @@ class JAMIE(uc.UnionCom):
 
         self.debug = debug
         self.log_debug = log_debug
+        self.record_loss = record_loss
 
         # Default changes
         defaults = {
@@ -494,17 +496,32 @@ class JAMIE(uc.UnionCom):
             self.batch_size = np.max(self.row)
 
         # Sampling method setup
+        self.PF_Ratio = 1 if self.PF_Ratio is None else self.PF_Ratio
         if self.P.shape[0] == self.P.shape[1] and np.abs(self.P - np.eye(self.row[0])).sum() == 0:
             self.sampling_method = 'diag'
+
+            # self.PF_Ratio = 1 if self.PF_Ratio is None else self.PF_Ratio
+
         elif np.abs(self.P).sum() != 0:
             self.sampling_method = 'hybrid'
-            self.true_ratio = sum(self.P.sum(axis=i) > 0 for i in range(len(self.P.shape))) / sum(self.P.shape)
+            self.corr_samples = np.argwhere(self.P > 0)
+            self.num_corr = len(self.corr_samples[0])
+
+            # self.true_ratio = min(float((1.*(self.P.abs().sum(i) > 0)).mean()) for i in range(self.dataset_num))
+            self.true_ratio = .8
+            # self.PF_Ratio = self.true_ratio if self.PF_Ratio is None else self.PF_Ratio
+
         else:
             self.sampling_method = 'zeros'
+            # self.PF_Ratio = 0 if self.PF_Ratio is None else self.PF_Ratio
 
         # Early stopping setup
         best_running_loss = np.inf
         streak = 0
+
+        # Logging setup
+        if self.record_loss:
+            self.loss_history = {}
 
         timer.log('Setup')
 
@@ -515,33 +532,34 @@ class JAMIE(uc.UnionCom):
                 batch_loss = 0
 
                 # Random samples (asdf test)
+                rep = min(ci for ci in self.col) < self.batch_size
                 if self.sampling_method == 'diag':
                     # Sample from diagonal
-                    set_rand = np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                    set_rand = np.random.choice(range(self.row[0]), self.batch_size, replace=rep)
                     random_batch = [set_rand for i in range(self.dataset_num)]
+
                 elif self.sampling_method == 'hybrid':
                     # Sample from nonzero corr
-                    true_ratio = 1.
-                    corr_sample_num = np.sum(np.random.rand(self.batch_size) < true_ratio)
+                    corr_sample_num = min( np.sum(np.random.rand(self.batch_size) < self.true_ratio), self.num_corr )
                     non_sample_num = self.batch_size - corr_sample_num
 
                     # Choose corresponding samples
-                    nonzero_idx = np.argwhere(self.P > 0)
-                    corr_idx = np.random.choice(len(nonzero_idx), corr_sample_num, replace=False)
-                    random_batch = [nonzero_idx[corr_idx][:, i] for i in range(self.dataset_num)]
+                    corr_idx = np.random.choice(self.num_corr, corr_sample_num, replace=rep)
+                    random_batch = [self.corr_samples[i][corr_idx] for i in range(self.dataset_num)]
 
-                    # Choose non-corresponding samples
+                    # Choose random samples
                     random_batch = [
                         np.concatenate([
-                            idx, np.random.choice(range(self.row[i]), non_sample_num, replace=False)
+                            idx, np.random.choice(self.row[i], non_sample_num, replace=rep)
                         ], axis=0)
                         for i, idx in enumerate(random_batch)]
 
                 elif self.sampling_method == 'zeros':
                     # Sample randomly
                     random_batch = [
-                        np.random.choice(range(self.row[i]), self.batch_size, replace=False)
+                        np.random.choice(range(self.row[i]), self.batch_size, replace=rep)
                         for i in range(self.dataset_num)]
+
                 else:
                     raise Exception(f'Sampling method {self.sampling_method} does not exist')
                 data = [self.dataset[i][random_batch[i]] for i in range(self.dataset_num)]
@@ -566,6 +584,10 @@ class JAMIE(uc.UnionCom):
 
                 # Aggregate correspondence
                 corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F
+                # F_thresh = torch.zeros_like(F)
+                # F_thresh[F >= torch.max(F, dim=1, keepdim=True).values] = 1
+                # F_thresh = F_thresh / torch.norm(F_thresh, dim=1, keepdim=True)
+                # corr = self.PF_Ratio * P + (1-self.PF_Ratio) * F_thresh
 
                 # Run model
                 embedded, combined, reconstructed, mus, logvars = self.model(*data, corr=corr)
@@ -707,6 +729,18 @@ class JAMIE(uc.UnionCom):
                 optimizer.step()
                 optimizer.zero_grad()
                 timer.log('Step')
+
+            # Loss reporting
+            if self.record_loss:
+                for i, (name, lo) in enumerate(zip(losses_names, losses)):
+                    if name not in self.loss_history:
+                        if epoch != 0:
+                            warnings.warn('Initializing loss after epoch 0, history will be misaligned.')
+                        self.loss_history[name] = []
+                    if self.loss_weights is not None:
+                        self.loss_history[name].append(float(lo.detach()) * self.loss_weights[i])
+                    else:
+                        self.loss_history[name].append(float(lo.detach()))
 
             # Debug Printing
             if (epoch+1) % self.log_debug == 0 and self.debug:

@@ -586,7 +586,7 @@ def plot_distribution_alone(
     datasets = [np.array(d) for d in datasets]
     fnames = [
         fnames[i]
-        if fnames[i] is not None else [f'Feature {i}' for i in range(len(df.columns))]
+        if fnames[i] is not None else np.array([f'Feature {i}' for i in range(datasets[i].shape[1])])
         for i in range(2)]
     if gcf is None:
         gcf = plt.gcf()
@@ -710,7 +710,7 @@ def plot_distribution_similarity(
     max_features=100,
     relative=True,
     label_cells=True,
-    legend=False,
+    legend=True,
     square=True,
     ax=None,
     **kwargs,
