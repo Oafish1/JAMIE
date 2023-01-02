@@ -1,3 +1,7 @@
+# 4.2.3
+- Figure changes
+- Simulation data update
+
 # 4.2.2
 - Added loss logging
 - Additional runs
