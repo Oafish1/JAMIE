@@ -572,6 +572,7 @@ def plot_auroc_correlation(*args, index=0, **kwargs):
 def plot_distribution_alone(
     datasets,
     labels,
+    label_order=None,
     feature_limit=2,
     title=None,
     fnames=None,
@@ -636,8 +637,13 @@ def plot_distribution_alone(
             id_vars=id_vars,
             value_vars=list(set(df.keys()) - set(id_vars)))
         df = df.rename(columns={'variable': 'Variable', 'value': 'Value', '_type': 'Type'})
-        df['fsorted'] = [np.argwhere(fname==x)[0][0] for x in df['Variable']]
+        df['fsorted'] = [
+            np.argwhere(np.array(label_order if label_order is not None else np.unique(labels))==x)[0][0]
+            for x in df['Type']]
         df = df.sort_values('fsorted')
+
+        # Consistent box ordering
+        # df.sort_values('Type')
 
         # Plot
         sns.boxplot(
@@ -653,6 +659,7 @@ def plot_distribution_alone(
         ax.set_xlabel(None)
         if i == 0:
             ax.set_xticks([])
+            ax.set_xticklabels([])
             ax.set_title(f'Sample Feature Distributions ({title})')
             # ax.axhline(y=ax.get_ylim()[0], color='black', linestyle='-', linewidth=5)
         else:
@@ -705,6 +712,7 @@ def plot_distribution(datasets, labels, feature_limit=3, title=None, **kwargs):
 def plot_distribution_similarity(
     datasets,
     labels,
+    label_order=None,
     suptitle=None,
     title=None,
     max_features=100,
@@ -726,7 +734,7 @@ def plot_distribution_similarity(
     if ax is None:
         ax = plt.gcf().add_subplot(1, 1, 1)
     distances = {}
-    for l in np.unique(labels):
+    for l in (np.unique(labels) if label_order is None else label_order):
         distances[l] = []
         for f in feat_idx:
             dist = jensen_shannon_from_array([datasets[i][labels[i] == l, f] for i in range(len(datasets))])

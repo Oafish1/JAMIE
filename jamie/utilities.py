@@ -1,6 +1,7 @@
 import contextlib
 import math
 from time import perf_counter
+import tracemalloc
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -63,13 +64,19 @@ class time_logger():
         discard_first_sample=False,
         record=True,
         verbose=False,
+        memory_usage=False,
     ):
         self.discard_first_sample = discard_first_sample
         self.record = record
         self.verbose = verbose
+        self.memory_usage = memory_usage
 
         self.history = {}
         self.start_time = perf_counter()
+
+        if memory_usage:
+            self.history_mem = {}
+            tracemalloc.start()
 
     def log(self, str=''):
         """Print with message ``str`` if verbose.  Otherwise, skip"""
@@ -79,15 +86,28 @@ class time_logger():
 
         # Perform any auxiliary operations here
         time_elapsed = self.end_time - self.start_time
+        # Record time
         if self.record:
             if str not in self.history:
                 self.history[str] = []
             self.history[str].append(time_elapsed)
         if self.verbose:
             print(f'{str}: {time_elapsed}')
+        # Record memory
+        if self.memory_usage:
+            if self.record:
+                if str not in self.history_mem:
+                    self.history_mem[str] = []
+                self.history_mem[str].append(tracemalloc.get_traced_memory())
+            if self.verbose:
+                print(f'{str} Memory: Stored {self.history_mem[-1][0]} - Peak {self.history_mem[-1][1]}')
+            tracemalloc.stop()
 
         # Re-time to avoid extra runtime cost
         self.start_time = perf_counter()
+        if self.memory_usage:
+            # WARNING, does not end tracemalloc
+            tracemalloc.start()
 
     def aggregate(self):
         """Print mean times for all keys in ``self.history``"""
@@ -100,6 +120,14 @@ class time_logger():
 
             running_total += avg_time_elapsed
             print(f'{k}: {avg_time_elapsed}')
+            if self.memory_usage:
+                stored = 0
+                peak = 0
+                for val in self.history_mem[k]:
+                    stored += val[0]
+                    if val[1] > peak:
+                        peak = val[1]
+                print(f'{k} Memory: Stored {stored} - Peak {peak}')
         print(f'Total: {running_total}')
 
 
@@ -563,6 +591,7 @@ def hash_kwargs(kwargs, dataset_name, dataset):
         'pca_dim': 2*[512],
         'dist_method': 'euclidean',
         'loss_weights': [1,1,1,1],
+        'use_f_tilde': True,
         'dropout': .6,
     }
     fromChar = [' ', '),', '(', ')', ',', '\'', '[', ']']

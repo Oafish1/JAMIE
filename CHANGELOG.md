@@ -1,3 +1,8 @@
+# 4.3.0
+- Add memory logging
+- Fixed ordering for `plot_distribution_alone`
+- More runs, more data
+
 # 4.2.3
 - Figure changes
 - Simulation data update

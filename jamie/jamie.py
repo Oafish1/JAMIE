@@ -1,5 +1,6 @@
 from itertools import product
 from math import prod
+import tracemalloc
 import warnings
 
 import anndata as ad
@@ -57,6 +58,7 @@ class JAMIE(uc.UnionCom):
         debug=False,
         log_debug=100,
         record_loss=True,
+        enable_memory_logging=False,
         **kwargs
     ):
         self.match_result = match_result
@@ -81,6 +83,7 @@ class JAMIE(uc.UnionCom):
         self.debug = debug
         self.log_debug = log_debug
         self.record_loss = record_loss
+        self.enable_memory_logging = enable_memory_logging
 
         # Default changes
         defaults = {
@@ -125,7 +128,7 @@ class JAMIE(uc.UnionCom):
             )
         assert self.model_pca in ('pca', 'umap')
 
-        time = time_logger()
+        time = time_logger(memory_usage=self.enable_memory_logging)
         init_random_seed(self.manual_seed)
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -203,6 +206,8 @@ class JAMIE(uc.UnionCom):
         print('-' * 33)
         print('JAMIE Done!')
         time.aggregate()
+        if self.enable_memory_logging:
+            tracemalloc.stop()
         print()
 
         return integrated_data
