@@ -608,6 +608,9 @@ def hash_kwargs(kwargs, dataset_name, dataset):
         'use_f_tilde': True,
         'dropout': .6,
     }
+    # Remove ineffectiual arguments
+    kwargs = {k: v for k, v in kwargs.items() if k not in ('enable_memory_logging')}
+
     fromChar = [' ', '),', '(', ')', ',', '\'', '[', ']']
     toChar = ['', '--', '', '', '-', '', '(', ')']
     # Hard-coded to only accept known arguments
