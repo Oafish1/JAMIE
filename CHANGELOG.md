@@ -1,5 +1,7 @@
 # 4.3.0
 - Add memory logging
+- Added `hybrid` method to `plot_integrated`
+- Added `plot_sample` for showing individual cell correlations
 - Fixed ordering for `plot_distribution_alone`
 - More runs, more data
 

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import stats
 from scipy.spatial import distance
-from sklearn import preprocessing
+from sklearn import metrics, preprocessing
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.neighbors import KNeighborsRegressor
@@ -420,11 +420,25 @@ class SingleModel(nn.Module):
 
 
 def predict_knn(input, output, val=None, k=5):
+    # Fastest, but more memory
     knn = KNeighborsRegressor(n_neighbors=k)
     knn.fit(input, output)
     if val is not None:
         return knn.predict(val)
     return knn.predict(input)
+
+    # Fast
+    # dist = metrics.pairwise_distances(val if val is not None else input, input)
+    # dist = dist.argsort(dim=1)[:, :k]
+
+    # Individual
+    # imputed = []
+    # for row in (val if val is not None else input):
+    #     dist = (input - row).square().sum(dim=1)
+    #     nearest_neighbors = np.argsort(dist)[:k]
+    #     imputed.append(np.array(output[nearest_neighbors].mean(dim=0)))
+    # return np.array(imputed)
+
 
 
 def predict_nn(source, target, val=None, epochs=200, batch_size=32):

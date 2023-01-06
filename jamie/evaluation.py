@@ -12,7 +12,8 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.feature_selection import f_regression, r_regression
 from sklearn.metrics import (
-    davies_bouldin_score, roc_auc_score, roc_curve, silhouette_samples)
+    davies_bouldin_score, r2_score, roc_auc_score, roc_curve,
+    silhouette_samples)
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.neighbors import KNeighborsClassifier
 import torch
@@ -143,6 +144,7 @@ def plot_integrated(
     legend=False,
     remove_outliers=False,
     n_components=2,
+    hybrid_components=4_096,
     separate_dim=False,
     square=False,
     method='umap',
@@ -150,10 +152,16 @@ def plot_integrated(
     seed=42,
 ):
     """Plot integrated data"""
-    assert method in ('pca', 'umap')
-    method_names = {'pca': 'PC', 'umap': 'UMAP'}
+    assert method in ('pca', 'umap', 'hybrid')
+    method_names = {'pca': 'PC', 'umap': 'UMAP', 'hybrid': 'PC-UMAP'}
     assert n_components in (2, 3), 'Only supports 2d and 3d at this time.'
     proj_method = '3d' if n_components == 3 else None
+
+    if method == 'hybrid':
+        # Pre-process with PCA
+        red = PCA(n_components=hybrid_components)
+        data = [red.fit_transform(dat) for dat in data]
+
     axs = []
     for i, (dat, lab) in enumerate(zip(data, labels)):
         ax = plt.gcf().add_subplot(1, len(data), i+1, projection=proj_method)
@@ -165,7 +173,7 @@ def plot_integrated(
                     red.fit(dat)
                 else:
                     red.fit(np.concatenate(data, axis=0))
-            elif method == 'umap':
+            elif method in ('umap', 'hybrid'):
                 red = umap.UMAP(
                     n_components=n_components,
                     n_neighbors=min(200, dat.shape[0] - 1) if n_neighbors is None else n_neighbors,
@@ -548,6 +556,54 @@ def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot
     ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
 
 
+def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None, color='blue'):
+    ax = plt.gca()
+
+    # Format features
+    feat = [true, imputed]
+
+    # Calculate p-value and r^2
+    if sample_idx is None:
+        r2 = []
+        p_value = []
+        for tru, imp in zip(*feat):
+            r2.append(r2_score(tru, imp))
+            p_value.append(stats.pearsonr(tru, imp)[1])
+        r2 = np.array(r2)
+        p_value = np.array(p_value)
+        sample_idx = np.argmax(r2)
+        # sample_idx = np.argsort(r2)[len(np.argsort(r2))//2]
+        r2 = r2[sample_idx]
+        p_value = p_value[sample_idx]
+    else:
+        r2 = r2_score(true[sample_idx], imputed[sample_idx])
+        _, p_value = stats.pearsonr(true[sample_idx], imputed[sample_idx])
+
+    # Plot
+    if feat[0].shape[1] > 100:
+        s = 5
+    else:
+        s = 15
+    ax.scatter(*[f[sample_idx] for f in feat], facecolor=color, edgecolor='none', s=s)
+    ax.axis('square')
+
+    ax.set_title(f'{suptitle} - {modal_name}' if suptitle is not None else f'Cell - {modal_name}')
+    ax.set_xlabel('Measured')
+    ax.set_ylabel(name)
+
+    # Plot y=x
+    lims = [
+        max(ax.get_xlim()[0], ax.get_ylim()[0]),
+        min(ax.get_xlim()[1], ax.get_ylim()[1])]
+    ax.plot(lims, lims, '--', color='black', alpha=0.75, zorder=-1)
+
+    # Text output
+    ax.text(.05, .8, f'$R^2$: {r2:.2E}', ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
+    ax.text(.05, .9, f'p-value: {p_value:.2E}', ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
+
+    return sample_idx
+
+
 def plot_auroc(*args, **kwargs):
     """Outward interface for plotting AUROC"""
     axs = plt.gcf().subplots(1, 2)
@@ -737,10 +793,13 @@ def plot_distribution_similarity(
     for l in (np.unique(labels) if label_order is None else label_order):
         distances[l] = []
         for f in feat_idx:
-            dist = jensen_shannon_from_array([datasets[i][labels[i] == l, f] for i in range(len(datasets))])
-            # Cast nan to 0 for visualization
-            if np.isnan(dist):
-                dist = 1
+            try:
+                dist = jensen_shannon_from_array([datasets[i][labels[i] == l, f] for i in range(len(datasets))])
+                # Cast nan to 0 for visualization
+                if np.isnan(dist):
+                    dist = 1
+            except:
+                dist = 0
             distances[l].append(1 - dist)
 
     # Sort by performance
