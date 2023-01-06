@@ -4,6 +4,7 @@
 - Added `plot_sample` for showing individual cell correlations
 - Fixed ordering for `plot_distribution_alone`
 - More runs, more data
+- Visualization fixes
 
 # 4.2.3
 - Figure changes

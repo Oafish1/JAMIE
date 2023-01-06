@@ -556,7 +556,7 @@ def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot
     ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
 
 
-def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None, color='blue'):
+def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None, color='blue', scale=None):
     ax = plt.gca()
 
     # Format features
@@ -595,6 +595,9 @@ def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None,
     maxlim = [min(ax.get_xlim()[0], ax.get_ylim()[0]), max(ax.get_xlim()[1], ax.get_ylim()[1])]
     ax.set_xlim(maxlim)
     ax.set_ylim(maxlim)
+    if scale is not None:
+        ax.set_xscale(scale)
+        ax.set_yscale(scale)
 
     # Plot y=x
     lims = [
