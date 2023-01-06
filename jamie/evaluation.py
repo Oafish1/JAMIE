@@ -571,8 +571,8 @@ def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None,
             p_value.append(stats.pearsonr(tru, imp)[1])
         r2 = np.array(r2)
         p_value = np.array(p_value)
-        sample_idx = np.argmax(r2)
-        # sample_idx = np.argsort(r2)[len(np.argsort(r2))//2]
+        # sample_idx = np.argmax(r2)
+        sample_idx = np.argsort(r2)[len(np.argsort(r2))//2]
         r2 = r2[sample_idx]
         p_value = p_value[sample_idx]
     else:
@@ -590,6 +590,11 @@ def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None,
     ax.set_title(f'{suptitle} - {modal_name}' if suptitle is not None else f'Cell - {modal_name}')
     ax.set_xlabel('Measured')
     ax.set_ylabel(name)
+
+    # Set limits
+    maxlim = [min(ax.get_xlim()[0], ax.get_ylim()[0]), max(ax.get_xlim()[1], ax.get_ylim()[1])]
+    ax.set_xlim(maxlim)
+    ax.set_ylim(maxlim)
 
     # Plot y=x
     lims = [

@@ -66,7 +66,7 @@ class edModel(nn.Module):
                 # nn.BatchNorm1d(input_dim[i]),
 
                 nn.Linear(input_dim[i], input_dim[i]),
-                nn.BatchNorm1d(input_dim[i]),
+                # nn.BatchNorm1d(input_dim[i]),
             ))
         self.decoders = nn.ModuleList(self.decoders)
 
