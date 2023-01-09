@@ -556,7 +556,7 @@ def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot
     ax.text(.95, .1, f'p-value: {p_value:.2E}', ha='right', va='center', transform=ax.transAxes, backgroundcolor='white')
 
 
-def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None, color='blue', scale=None):
+def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None, color='blue', scale=None, plot_type='scatter'):
     ax = plt.gca()
 
     # Format features
@@ -571,8 +571,8 @@ def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None,
             p_value.append(stats.pearsonr(tru, imp)[1])
         r2 = np.array(r2)
         p_value = np.array(p_value)
-        # sample_idx = np.argmax(r2)
-        sample_idx = np.argsort(r2)[len(np.argsort(r2))//2]
+        sample_idx = np.argmax(r2)
+        # sample_idx = np.argsort(r2)[len(np.argsort(r2))//2]
         r2 = r2[sample_idx]
         p_value = p_value[sample_idx]
     else:
@@ -580,13 +580,33 @@ def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None,
         _, p_value = stats.pearsonr(true[sample_idx], imputed[sample_idx])
 
     # Plot
-    if feat[0].shape[1] > 100:
-        s = 5
-    else:
-        s = 15
-    ax.scatter(*[f[sample_idx] for f in feat], facecolor=color, edgecolor='none', s=s)
-    ax.axis('square')
+    assert plot_type in ('scatter', 'density')
 
+    if plot_type == 'scatter':
+        # Scatterplot
+        if feat[0].shape[1] > 100:
+            s = 5
+        else:
+            s = 15
+        ax.scatter(*[f[sample_idx] for f in feat], facecolor=color, edgecolor='none', s=s)
+    elif plot_type == 'density':
+        # Density plot
+        # https://www.python-graph-gallery.com/85-density-plot-with-matplotlib
+        from scipy.stats import kde
+        nbins = 300
+        x, y = [np.array(f[sample_idx]) for f in feat]
+        proc = np.stack([x, y], axis=0)
+        proc = proc[:, ~np.isnan(proc).any(axis=0)]
+        proc = proc[:, ~np.isinf(proc).any(axis=0)]
+        x, y = proc[0], proc[1]
+        k = kde.gaussian_kde([x,y])
+        MIN = min(x.min(), y.min())
+        MAX = min(x.max(), y.max())
+        xi, yi = np.mgrid[MIN:MAX:nbins*1j, MIN:MAX:nbins*1j]
+        zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+        ax.pcolormesh(xi, yi, zi.reshape(xi.shape), shading='auto', cmap='Greys')
+
+    ax.axis('square')
     ax.set_title(f'{suptitle} - {modal_name}' if suptitle is not None else f'Cell - {modal_name}')
     ax.set_xlabel('Measured')
     ax.set_ylabel(name)
@@ -603,7 +623,10 @@ def plot_sample(true, imputed, name, modal_name, suptitle=None, sample_idx=None,
     lims = [
         max(ax.get_xlim()[0], ax.get_ylim()[0]),
         min(ax.get_xlim()[1], ax.get_ylim()[1])]
-    ax.plot(lims, lims, '--', color='black', alpha=0.75, zorder=-1)
+    if plot_type == 'scatter':
+        ax.plot(lims, lims, '--', color='black', alpha=0.75, zorder=-1)
+    elif plot_type == 'density':
+        ax.plot(lims, lims, '-', color='red', alpha=0.75)
 
     # Text output
     ax.text(.05, .8, f'$R^2$: {r2:.2E}', ha='left', va='center', transform=ax.transAxes, backgroundcolor='white')
