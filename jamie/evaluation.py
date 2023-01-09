@@ -317,7 +317,16 @@ def plot_accuracy_table(data, labels, names, exclude=[]):
     ax.grid(which='minor')
 
 
-def plot_accuracy_graph(data, labels, names, colors=None, shapes=None):
+def plot_accuracy_graph(
+    data,
+    labels,
+    names,
+    colors=None,
+    shapes=None,
+    max_dist=.2,
+    pad=.095,
+    force_points=2.,
+    **kwargs):
     """Compare accuracies of methods using a graph"""
     if colors is None:
         colors = len(data) * [None]
@@ -348,8 +357,6 @@ def plot_accuracy_graph(data, labels, names, colors=None, shapes=None):
     bounds = []
     for vals in [df.transpose()['FOSCTTM'], df.transpose()['LTA']]:
         bounds.append([])
-        max_dist = .2
-        pad = .095
 
         sorted_vals = np.sort(vals)
         min_val = sorted_vals[0]
@@ -408,14 +415,17 @@ def plot_accuracy_graph(data, labels, names, colors=None, shapes=None):
         ))
     adjust_text(
         tbs,
-        force_points=2.,
+        force_points=force_points,
         arrowprops=dict(
             arrowstyle='-',
             color='black',
             shrinkA=0,
             shrinkB=10,
         ),
+        **kwargs,
     )
+
+    return bax
 
 
 def plot_silhouette(data, labels, names, modal_names, colors=None):
