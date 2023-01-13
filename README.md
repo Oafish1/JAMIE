@@ -1,4 +1,4 @@
-# JAMIE: Joint Variational Autoencoders for Multi-Modal Imputation and Embedding
+# JAMIE: Joint Variational Autoencoders for MultiModal Imputation and Embedding
 
 Single-cell multi-modal datasets have emerged to measure various characteristics of individual cells, enabling a deep understanding of cellular and molecular mechanisms. However, generating multi-modal data for many cells remains costly and challenging. Thus, missing modalities happens frequently, becoming a major obstacle to understanding mechanisms. Recently, machine learning approaches have been developed to impute cell data but typically use fully matched multi-modal data and learn common latent embeddings that potentially miss modality specificity. To address these issues, we developed a novel machine learning model with open-source tool, Joint variational Autoencoders for Multi-modal Imputation and Embedding (JAMIE). JAMIE takes single-cell multi-modal data that can have partially matched samples across modalities. Variational autoencoders learn the latent embeddings of each modality. Then, embeddings from matched samples across modalities are aggregated to identify joint cross-modal latent embeddings before reconstruction. To perform cross-modal imputation from one to another, the latent embeddings can be used with the opposite decoder.
 
@@ -75,13 +75,13 @@ plt.tight_layout()
 plt.savefig('../../img/simulation_raw.png', dpi=300, bbox_inches='tight')
 ```
 
-<img src="./img/simulation_raw.png" alt="Raw simulation single-cell multi-modal data" width="700"/>
+<img src="./img/simulation_raw.png" alt="Raw simulation single-cell multimodal data" width="700"/>
 
 Create the `JAMIE` instance and integrate the datasets.
 ```python
 from jamie import JAMIE
 
-jm = JAMIE()
+jm = JAMIE(min_epochs=500)
 integrated_data = jm.fit_transform(dataset=[data1, data2], P=corr)
 ```
 
