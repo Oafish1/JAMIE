@@ -52,7 +52,7 @@ class JAMIE(uc.UnionCom):
         batch_step=True,
         use_f_tilde=True,
         use_early_stop=True,
-        min_epochs=500,
+        min_epochs=2500,
         min_increment=1e-8,
         max_steps_without_increment=500,
         debug=False,
@@ -786,7 +786,8 @@ class JAMIE(uc.UnionCom):
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
         print("Finished Mapping!")
-        # timer.aggregate()
+        if self.debug:
+            timer.aggregate()
         return integrated_data
 
     def modal_predict(self, data, modality):
