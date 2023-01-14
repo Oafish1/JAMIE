@@ -677,6 +677,7 @@ def plot_distribution_alone(
     rows=2,
     remove_outliers=True,
     equal_axes=False,
+    sort_type='entropy-corr',
     feature_dict={},
     **kwargs,
 ):
@@ -694,7 +695,8 @@ def plot_distribution_alone(
     feature_limit = feature_limit if feature_limit is not None else datasets[0].shape[1]
     feature_idx = sort_by_interest(datasets,
                                    limit=feature_limit,
-                                   remove_outliers=remove_outliers)[1]
+                                   remove_outliers=remove_outliers,
+                                   sort_type=sort_type)[1]
     datasets = [data[:, feature_idx] for data in datasets]
     # if remove_outliers:
     #     filter = outliers(datasets[0], verbose=True)
@@ -763,10 +765,12 @@ def plot_distribution_alone(
             ax.set_title(None)
         ax.set_ylabel(names[i])
         ax.legend([], [], frameon=False)
+
+    # Remove outliers
     if remove_outliers:
         for i in range(len(axs)):
-            ax = axs[i] if not equal_axes else axs[0]
-            d = datasets[i] if not equal_axes else datasets[0]
+            ax = axs[i]
+            d = datasets[i]
             new_ylim = outliers(d, return_limits=True)[1]
             stretch=1.5
             new_ylim = (
@@ -774,6 +778,13 @@ def plot_distribution_alone(
                 np.max(new_ylim[1]+stretch*new_ylim[2]))
             new_ylim = (max(new_ylim[0], ax.get_ylim()[0]), min(new_ylim[1], ax.get_ylim()[1]))
             axs[i].set_ylim(new_ylim)
+
+    # Equal ylims
+    if equal_axes:
+        new_ylims = (min(ax.get_ylim()[0] for ax in axs), max(ax.get_ylim()[1] for ax in axs))
+        for ax in axs:
+            ax.set_ylim(new_ylims)
+
     for ax in axs:
         set_yticks(ax, 4)
     plt.gcf().subplots_adjust(hspace=0)

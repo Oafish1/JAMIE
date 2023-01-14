@@ -2,6 +2,7 @@
 - Add memory logging
 - Added `hybrid` method to `plot_integrated`
 - Added `plot_sample` for showing individual cell correlations
+- Added `sort_type` option to `sort_by_interest` utility function
 - Fixed ordering for `plot_distribution_alone`
 - More runs, more data
 - Visualization fixes

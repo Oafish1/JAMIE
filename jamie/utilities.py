@@ -502,58 +502,11 @@ def tune_cm(cm, dataset, types, wt_size, num_search=20):
     return best_wt, best_cm_data
 
 
-def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
+def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True, sort_type='entropy-corr'):
     """Assesses datasets (real, imputed) and returns interesting indexes"""
+    assert sort_type in ('entropy-corr', 'js-mse', 'js', 'mse'), f'Unknown sort type {sort_type}.'
     if limit is None:
         limit = datasets[0].shape[1]
-
-    # Score by entropy and imputation performance
-    # Distribution
-    # X = np.linspace(0, 1, 1000)
-    if remove_outliers:
-        dataset0_features = [
-            datasets[0][~outliers(datasets[0][:, i]), i]
-            for i in range(datasets[0].shape[1])]
-    else:
-        dataset0_features = [datasets[0][:, i] for i in range(datasets[0].shape[1])]
-    distribution_true = [
-        np.histogram(d, bins=np.linspace(np.min(d), np.max(d), 100))[0] for d in dataset0_features
-    ]
-    # distribution_true = [stats.rv_histogram(d) for d in distribution_true]
-    # distribution_true = [[d.pdf(x) for x in X] for d in distribution_true]
-    # distribution_true = [d / sum(d) for d in distribution_true]
-    distribution_pred = [
-        np.histogram(
-            datasets[1][:, i],
-            bins=np.linspace(np.min(datasets[1][:, i]),
-            np.max(datasets[1][:, i]), 100))[0]
-            for i in range(datasets[0].shape[1])
-    ]
-    # distribution_pred = [stats.rv_histogram(d) for d in distribution_pred]
-    # distribution_pred = [[d.pdf(x) for x in X] for d in distribution_pred]
-    # distribution_pred = [d / sum(d) for d in distribution_pred]
-
-    # Entropy
-    entropy_arr = np.array([stats.entropy(t) for t in distribution_true])
-    entropy_arr[np.isnan(entropy_arr)] = 0
-    entropy_arr[np.isinf(entropy_arr)] = 0
-
-    # Corr
-    corr_arr = np.array([
-        stats.pearsonr(datasets[0][:, i], datasets[1][:, i])[0]
-        for i in range(datasets[0].shape[1])])
-    corr_arr[np.isnan(corr_arr)] = -1
-
-    # # Unique
-    # uniq_arr = np.array([
-    #     len(np.unique(datasets[0][:, i]))
-    #     for i in range(datasets[0].shape[1])])
-
-    # # MSE
-    # dist_arr = np.array([
-    #     np.mean(np.sum((datasets[0][:, i] - datasets[1][:, i])**2))
-    #     for i in range(datasets[0].shape[1])])
-    # dist_arr[np.isnan(dist_arr)] = np.inf
 
     # # KL
     # kl_arr = np.array([stats.entropy(t, p)
@@ -565,9 +518,69 @@ def sort_by_interest(datasets, int_thresh=.8, limit=20, remove_outliers=True):
     #     for t, p in zip(distribution_true, distribution_pred)])
     # ks_arr[np.isnan(ks_arr)] = 1
 
-    # Order
-    temp_order = np.argsort(5e-1*np.log(1+entropy_arr) + corr_arr)[::-1]  # + 1e-1*np.log(uniq_arr)
-    # temp_order = np.argsort(ks_arr - 5e-2*np.log(entropy_arr))
+    # # Unique
+    # uniq_arr = np.array([
+    #     len(np.unique(datasets[0][:, i]))
+    #     for i in range(datasets[0].shape[1])])
+
+    if sort_type == 'entropy-corr':
+        # Histograms
+        if remove_outliers:
+            dataset0_features = [
+                datasets[0][~outliers(datasets[0][:, i]), i]
+                for i in range(datasets[0].shape[1])]
+        else:
+            dataset0_features = [datasets[0][:, i] for i in range(datasets[0].shape[1])]
+        distribution_true = [
+            np.histogram(d, bins=np.linspace(np.min(d), np.max(d), 100))[0] for d in dataset0_features
+        ]
+        # distribution_pred = [
+        #     np.histogram(
+        #         datasets[1][:, i],
+        #         bins=np.linspace(np.min(datasets[1][:, i]),
+        #         np.max(datasets[1][:, i]), 100))[0]
+        #         for i in range(datasets[0].shape[1])
+        # ]
+
+        # Entropy
+        entropy_arr = np.array([stats.entropy(t) for t in distribution_true])
+        entropy_arr[np.isnan(entropy_arr)] = 0
+        entropy_arr[np.isinf(entropy_arr)] = 0
+
+        # Corr
+        corr_arr = np.array([
+            stats.pearsonr(datasets[0][:, i], datasets[1][:, i])[0]
+            for i in range(datasets[0].shape[1])])
+        corr_arr[np.isnan(corr_arr)] = -1
+
+        temp_order = np.argsort(5e-1*np.log(1+entropy_arr) + corr_arr)[::-1]
+
+    elif sort_type == 'js-mse':
+        # JS Distance
+        js_arr = [jensen_shannon_from_array([d[:, i] for d in datasets]) for i in range(datasets[0].shape[1])]
+
+        # Scaled MSE
+        dist_arr = np.array([
+            np.mean(np.sum( ((datasets[0][:, i] - datasets[1][:, i]) / np.std(datasets[1][:, i]))**2 ))
+            for i in range(datasets[0].shape[1])])
+        dist_arr[np.isnan(dist_arr)] = np.inf
+
+    elif sort_type == 'js':
+        # JS Distance
+        js_arr = [jensen_shannon_from_array([d[:, i] for d in datasets]) for i in range(datasets[0].shape[1])]
+
+        # Order
+        temp_order = np.argsort(js_arr)
+
+    elif sort_type == 'mse':
+        # Scaled MSE
+        dist_arr = np.array([
+            np.mean(np.sum( ((datasets[0][:, i] - datasets[1][:, i]) / np.std(datasets[1][:, i]))**2 ))
+            for i in range(datasets[0].shape[1])])
+        dist_arr[np.isnan(dist_arr)] = np.inf
+
+        # Order
+        temp_order = np.argsort(dist_arr)
 
     # Filter for interest and diversity
     feature_idx = []
