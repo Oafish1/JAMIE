@@ -947,7 +947,9 @@ def plot_impact(
     ax.axhline(y=baseline, color='red', linewidth=3)
     ax.set_ylabel(ylabel)
     yrange = max(values) - min(values)
-    ymin, ymax = max(min(values) - 1. * yrange, 0), min(max(values) + 1. * yrange, 1)
+    ymin, ymax = max(min(values) - 1. * yrange, 0 if min(values) >= 0 else -1), min(max(values) + 1. * yrange, 1)
+    if min(values) < 0:
+        plt.axhline(y=0, color='black')
     ax.set_ylim([ymin, ymax])
     plt.xticks(rotation=80)
 
@@ -1025,7 +1027,7 @@ def _evaluate_impact_helper(function, perf_function, in_data, true, background, 
         # perf = logits  # LTA
         perf = perf_function(logits, true)
         if np.isnan(perf):
-            perf = -np.inf
+            perf = np.inf
         performance.append(perf)
     print()
     return np.array(performance)
