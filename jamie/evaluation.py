@@ -908,8 +908,11 @@ def plot_impact(
     sort='mixed-min',
     color=None,
     max_name_len=10,
+    seed=42,
 ):
     """Plot impact for various features on JAMIE model"""
+    if seed is not None:
+        np.random.seed(seed)
     num_features = len(values) if max_features is None else max_features
     num_features = min(len(values), num_features)
     if sort is not None:
@@ -949,9 +952,11 @@ def plot_impact(
     plt.xticks(rotation=80)
 
 
-def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', scan=None, scan_samples=500):
+def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', scan=None, scan_samples=500, seed=42):
     """Get impact values"""
     assert mode in ['replace', 'keep']
+    if seed is not None:
+        np.random.seed(seed)
 
     testing_idx = idx if idx is not None else np.array(range(in_data.shape[1]))
 
