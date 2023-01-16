@@ -949,6 +949,7 @@ def plot_impact(
     yrange = max(values) - min(values)
     ymin, ymax = max(min(values) - 1. * yrange, 0 if min(values) >= 0 else -1), min(max(values) + 1. * yrange, 1)
     if min(values) < 0:
+        # asdf: To revise, add option for keep or replace
         plt.axhline(y=0, color='black')
     ax.set_ylim([ymin, ymax])
     plt.xticks(rotation=80)
@@ -1005,7 +1006,7 @@ def _evaluate_impact_helper(function, perf_function, in_data, true, background, 
             f'Current Best: {best_perf:.5f}, {best_str}'
             , end='\r')
 
-        mod_data = in_data
+        mod_data = in_data  # .copy() not needed
         # Replace one
         if mode == 'replace':
             replace_idx = idx

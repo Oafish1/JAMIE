@@ -5,6 +5,7 @@
 - Added `sort_type` option to `sort_by_interest` utility function
 - Fixed ordering for `plot_distribution_alone`
 - More runs, more data
+- New visualization for `ATAC -> RNA` imputation gene importance
 - Visualization fixes
 
 # 4.2.3
