@@ -944,7 +944,8 @@ def plot_impact(
 
     ax = plt.gcf().add_subplot(1, 1, 1)
     sns.barplot(x=fnames, y=values, ax=ax, color=color)
-    ax.axhline(y=baseline, color='red', linewidth=3)
+    # plt.setp(ax.patches, linewidth=0)
+    ax.axhline(y=baseline, color='red', linewidth=3, zorder=-1)
     ax.set_ylabel(ylabel)
     yrange = max(values) - min(values)
     ymin, ymax = max(min(values) - 1. * yrange, 0 if min(values) >= 0 else -1), min(max(values) + 1. * yrange, 1)
