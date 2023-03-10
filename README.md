@@ -25,7 +25,7 @@ conda activate JAMIE
 
 Install dependencies and the local library with `pip`.
 ```bash
-# NOTE: UnionCom and UMAP will not import correctly if installed as root
+# NOTE: UnionCom and UMAP will not import correctly if installed on Windows as administrator
 # For example notebooks or development
 pip install -r requirements-dev.txt
 

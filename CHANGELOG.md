@@ -1,3 +1,9 @@
+# 4.3.1
+- Additional runs for imputation
+- Clarifications
+- More options
+- Small terminology fixes
+
 # 4.3.0
 - Add memory logging
 - Added `hybrid` method to `plot_integrated`

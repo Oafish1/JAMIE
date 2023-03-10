@@ -956,7 +956,7 @@ def plot_impact(
     plt.xticks(rotation=80)
 
 
-def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', scan=None, scan_samples=500, seed=42):
+def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', sequential=True, scan=None, scan_samples=500, seed=42):
     """Get impact values"""
     assert mode in ['replace', 'keep']
     if seed is not None:
@@ -980,13 +980,13 @@ def evaluate_impact(function, perf_function, in_data, true, features=None, idx=N
             performance = -performance
         testing_idx = testing_idx[np.argsort(performance)[:scan]]
     print('Finding important features...')
-    performance = _evaluate_impact_helper(function, perf_function, in_data, true, background, baseline, testing_idx, mode, features=features)
+    performance = _evaluate_impact_helper(function, perf_function, in_data, true, background, baseline, testing_idx, mode, sequential, features=features)
     print('Done!')
 
     return baseline, performance, testing_idx
 
 
-def _evaluate_impact_helper(function, perf_function, in_data, true, background, baseline, testing_idx, mode, features=None, check_best=10):
+def _evaluate_impact_helper(function, perf_function, in_data, true, background, baseline, testing_idx, mode, sequential, features=None, check_best=10):
     """Helper function for `evaluate_impact`"""
     performance = []
     best_idx = -1
@@ -1007,13 +1007,15 @@ def _evaluate_impact_helper(function, perf_function, in_data, true, background, 
             f'Current Best: {best_perf:.5f}, {best_str}'
             , end='\r')
 
-        mod_data = in_data  # .copy() not needed
+        mod_data = in_data
         # Replace one
         if mode == 'replace':
             replace_idx = idx
         elif mode == 'keep':
             replace_idx = [i!=idx for i in range(mod_data.shape[1])]
         old_data = mod_data[:, replace_idx]
+        if not sequential:
+            old_data = old_data.copy()
         mod_data[:, replace_idx] = background[replace_idx]
 
         # Predict
