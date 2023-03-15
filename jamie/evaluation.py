@@ -465,7 +465,7 @@ def plot_silhouette(data, labels, names, modal_names, colors=None):
         ax.get_legend().remove()
 
 
-def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_features=100_000):
+def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_features=100_000, return_statistic=False):
     """Plot AUROC by feature for imputation on binarized data"""
     total_features = min(data[i].shape[1], max_features)
     # Samples by default
@@ -485,8 +485,10 @@ def _plot_auroc(imputed_data, data, modal_names, ax, i=0, names=None, max_featur
                     temp.append(roc_auc_score(tr, pr))
         feat_auc.append(temp)
     _plot_auroc_correlation_template(ax, feat_auc, names, 'AUROC', modal_names[i])
+    if return_statistic:
+        return feat_auc
 
-def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_features=100_000):
+def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_features=100_000, return_statistic=False):
     """Plot correlation by feature for imputed data"""
     total_features = min(data[i].shape[1], max_features)
     # Samples by default
@@ -507,6 +509,8 @@ def _plot_correlation(imputed_data, data, modal_names, ax, i=0, names=None, max_
                 # p_per_feature.append(f_regression(predicted[:, [k]], actual[:, k])[1][0])
         feat_corr.append(temp)
     _plot_auroc_correlation_template(ax, feat_corr, names, 'Correlation', modal_names[i])
+    if return_statistic:
+        return feat_corr
 
 
 def _plot_auroc_correlation_template(ax, feat, names, suptitle, modal_name, plot_type='scatter'):
@@ -662,8 +666,10 @@ def plot_correlation(*args, **kwargs):
 def plot_auroc_correlation(*args, index=0, **kwargs):
     """Outward interface for plotting both AUROC and correlation"""
     axs = plt.gcf().subplots(1, 2)
-    _plot_auroc(*args, ax=axs[0], i=index, **kwargs)
-    _plot_correlation(*args, ax=axs[1], i=index, **kwargs)
+    return (
+        _plot_auroc(*args, ax=axs[0], i=index, **kwargs),
+        _plot_correlation(*args, ax=axs[1], i=index, **kwargs),
+    )
 
 
 def plot_distribution_alone(

@@ -1,3 +1,8 @@
+# 4.3.2
+- Added `return_statistic` to `plot_auroc...` function family
+- Additional statistic reporting surrounding dropout
+- Revised visualizations for loss clarity
+
 # 4.3.1
 - Additional runs for imputation
 - Clarifications
