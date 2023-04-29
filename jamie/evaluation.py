@@ -981,7 +981,7 @@ def evaluate_impact(function, perf_function, in_data, true, features=None, idx=N
         print('Performing preliminary scan...')
         sample_idx = np.random.choice(in_data.shape[0], scan_samples, replace=False)
         true_mini = true[sample_idx] if true is not None else None
-        performance = _evaluate_impact_helper(lambda x: function(x, idx=sample_idx), perf_function, in_data[sample_idx, :], true_mini, background, baseline, testing_idx, mode, features=features)
+        performance = _evaluate_impact_helper(lambda x: function(x, idx=sample_idx), perf_function, in_data[sample_idx, :], true_mini, background, baseline, testing_idx, mode, sequential, features=features)
         if mode == 'keep':
             performance = -performance
         testing_idx = testing_idx[np.argsort(performance)[:scan]]
