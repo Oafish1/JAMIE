@@ -10,11 +10,11 @@ absl-py==1.3.0
     # via
     #   tensorboard
     #   tensorflow
-adjusttext==0.7.3
+adjusttext==0.8
     # via
     #   -c requirements.txt
     #   jamie
-anndata==0.8.0
+anndata==0.9.1
     # via
     #   -c requirements.txt
     #   jamie
@@ -27,10 +27,14 @@ brokenaxes==0.5.0
     #   jamie
 cachetools==5.2.0
     # via google-auth
-certifi==2022.9.24
-    # via requests
-charset-normalizer==2.1.1
-    # via requests
+certifi==2023.5.7
+    # via
+    #   -c requirements.txt
+    #   requests
+charset-normalizer==3.2.0
+    # via
+    #   -c requirements.txt
+    #   requests
 click==8.0.1
     # via pip-tools
 cloudpickle==2.2.0
@@ -40,14 +44,26 @@ colorama==0.4.6
     #   -c requirements.txt
     #   click
     #   tqdm
-cycler==0.10.0
+contourpy==1.1.0
+    # via
+    #   -c requirements.txt
+    #   matplotlib
+cycler==0.11.0
     # via
     #   -c requirements.txt
     #   matplotlib
 et-xmlfile==1.1.0
     # via openpyxl
+filelock==3.12.2
+    # via
+    #   -c requirements.txt
+    #   torch
 flatbuffers==22.9.24
     # via tensorflow
+fonttools==4.41.0
+    # via
+    #   -c requirements.txt
+    #   matplotlib
 gast==0.4.0
     # via tensorflow
 google-auth==2.12.0
@@ -62,17 +78,27 @@ grpcio==1.49.1
     # via
     #   tensorboard
     #   tensorflow
-h5py==3.6.0
+h5py==3.9.0
     # via
     #   -c requirements.txt
     #   anndata
     #   scanpy
     #   tensorflow
 idna==3.4
-    # via requests
+    # via
+    #   -c requirements.txt
+    #   requests
 importlib-metadata==5.0.0
     # via markdown
-joblib==1.0.1
+importlib-resources==6.0.0
+    # via
+    #   -c requirements.txt
+    #   matplotlib
+jinja2==3.1.2
+    # via
+    #   -c requirements.txt
+    #   torch
+joblib==1.3.1
     # via
     #   -c requirements.txt
     #   pynndescent
@@ -82,22 +108,25 @@ keras==2.10.0
     # via tensorflow
 keras-preprocessing==1.1.2
     # via tensorflow
-kiwisolver==1.3.2
+kiwisolver==1.4.4
     # via
     #   -c requirements.txt
     #   matplotlib
 libclang==14.0.6
     # via tensorflow
-llvmlite==0.38.0
+llvmlite==0.40.1
     # via
     #   -c requirements.txt
     #   numba
     #   pynndescent
 markdown==3.4.1
     # via tensorboard
-markupsafe==2.1.1
-    # via werkzeug
-matplotlib==3.4.3
+markupsafe==2.1.3
+    # via
+    #   -c requirements.txt
+    #   jinja2
+    #   werkzeug
+matplotlib==3.7.2
     # via
     #   -c requirements.txt
     #   adjusttext
@@ -108,37 +137,38 @@ matplotlib==3.4.3
     #   seaborn
 mmd-wrapper @ git+https://git@github.com/Oafish1/WR2MD@v1.2.5
     # via jamie
-natsort==8.1.0
+mpmath==1.3.0
+    # via
+    #   -c requirements.txt
+    #   sympy
+natsort==8.4.0
     # via
     #   -c requirements.txt
     #   anndata
     #   scanpy
-networkx==2.7.1
+networkx==3.1
     # via
     #   -c requirements.txt
     #   scanpy
-numba==0.55.1
+    #   torch
+numba==0.57.1
     # via
     #   -c requirements.txt
     #   pynndescent
     #   scanpy
     #   shap
     #   umap-learn
-numexpr==2.8.1
-    # via
-    #   -c requirements.txt
-    #   tables
-numpy==1.21.2
+numpy==1.24.4
     # via
     #   -c requirements.txt
     #   adjusttext
     #   anndata
+    #   contourpy
     #   h5py
     #   jamie
     #   keras-preprocessing
     #   matplotlib
     #   numba
-    #   numexpr
     #   opt-einsum
     #   pandas
     #   patsy
@@ -149,7 +179,6 @@ numpy==1.21.2
     #   seaborn
     #   shap
     #   statsmodels
-    #   tables
     #   tensorboard
     #   tensorflow
     #   torchvision
@@ -160,17 +189,16 @@ openpyxl==3.0.10
     # via jamie
 opt-einsum==3.3.0
     # via tensorflow
-packaging==21.3
+packaging==23.1
     # via
     #   -c requirements.txt
     #   anndata
-    #   numexpr
+    #   matplotlib
     #   scanpy
     #   shap
     #   statsmodels
-    #   tables
     #   tensorflow
-pandas==1.4.1
+pandas==2.0.3
     # via
     #   -c requirements.txt
     #   anndata
@@ -179,14 +207,14 @@ pandas==1.4.1
     #   seaborn
     #   shap
     #   statsmodels
-patsy==0.5.2
+patsy==0.5.3
     # via
     #   -c requirements.txt
     #   scanpy
     #   statsmodels
 pep517==0.11.0
     # via pip-tools
-pillow==8.3.2
+pillow==10.0.0
     # via
     #   -c requirements.txt
     #   matplotlib
@@ -203,37 +231,38 @@ pyasn1==0.4.8
     #   rsa
 pyasn1-modules==0.2.8
     # via google-auth
-pynndescent==0.5.6
+pynndescent==0.5.10
     # via
     #   -c requirements.txt
     #   umap-learn
-pyparsing==2.4.7
+pyparsing==3.0.9
     # via
     #   -c requirements.txt
     #   matplotlib
-    #   packaging
 python-dateutil==2.8.2
     # via
     #   -c requirements.txt
     #   matplotlib
     #   pandas
-pytz==2022.1
+pytz==2023.3
     # via
     #   -c requirements.txt
     #   pandas
-requests==2.28.1
+requests==2.31.0
     # via
+    #   -c requirements.txt
     #   requests-oauthlib
     #   tensorboard
+    #   torchvision
 requests-oauthlib==1.3.1
     # via google-auth-oauthlib
 rsa==4.9
     # via google-auth
-scanpy==1.8.2
+scanpy==1.9.3
     # via
     #   -c requirements.txt
     #   jamie
-scikit-learn==1.0
+scikit-learn==1.3.0
     # via
     #   -c requirements.txt
     #   jamie
@@ -244,11 +273,11 @@ scikit-learn==1.0
     #   shap
     #   sklearn
     #   umap-learn
-scikit-learn-extra==0.2.0
+scikit-learn-extra==0.3.0
     # via
     #   -c requirements.txt
     #   jamie
-scipy==1.7.1
+scipy==1.11.1
     # via
     #   -c requirements.txt
     #   anndata
@@ -258,26 +287,24 @@ scipy==1.7.1
     #   scanpy
     #   scikit-learn
     #   scikit-learn-extra
-    #   seaborn
     #   shap
     #   statsmodels
     #   umap-learn
-seaborn==0.11.2
+seaborn==0.12.2
     # via
     #   -c requirements.txt
     #   jamie
     #   scanpy
-shap==0.41.0
-    # via jamie
-sinfo==0.3.4
+session-info==1.0.0
     # via
     #   -c requirements.txt
     #   scanpy
+shap==0.41.0
+    # via jamie
 six==1.16.0
     # via
     #   -c requirements.txt
     #   astunparse
-    #   cycler
     #   google-auth
     #   google-pasta
     #   grpcio
@@ -289,18 +316,18 @@ sklearn==0.0
     # via mmd-wrapper
 slicer==0.0.7
     # via shap
-statsmodels==0.13.2
+statsmodels==0.14.0
     # via
     #   -c requirements.txt
     #   scanpy
-stdlib-list==0.8.0
+stdlib-list==0.9.0
     # via
     #   -c requirements.txt
-    #   sinfo
-tables==3.7.0
+    #   session-info
+sympy==1.12
     # via
     #   -c requirements.txt
-    #   scanpy
+    #   torch
 tensorboard==2.10.1
     # via tensorflow
 tensorboard-data-server==0.6.1
@@ -315,35 +342,39 @@ tensorflow-io-gcs-filesystem==0.27.0
     # via tensorflow
 termcolor==2.0.1
     # via tensorflow
-threadpoolctl==3.0.0
+threadpoolctl==3.2.0
     # via
     #   -c requirements.txt
     #   scikit-learn
 tomli==1.2.1
     # via pep517
-torch==1.9.1
+torch==2.0.1
     # via
     #   -c requirements.txt
     #   jamie
     #   mmd-wrapper
     #   torchvision
-torchvision==0.10.1
+torchvision==0.15.2
     # via
     #   -c requirements.txt
     #   jamie
     #   mmd-wrapper
-tqdm==4.63.1
+tqdm==4.65.0
     # via
     #   -c requirements.txt
     #   scanpy
     #   shap
     #   umap-learn
-typing-extensions==3.10.0.2
+typing-extensions==4.7.1
     # via
     #   -c requirements.txt
     #   tensorflow
     #   torch
-umap-learn==0.5.2
+tzdata==2023.3
+    # via
+    #   -c requirements.txt
+    #   pandas
+umap-learn==0.5.3
     # via
     #   -c requirements.txt
     #   jamie
@@ -354,8 +385,10 @@ unioncom==0.4.0
     #   -c requirements.txt
     #   jamie
     #   mmd-wrapper
-urllib3==1.26.12
-    # via requests
+urllib3==2.0.4
+    # via
+    #   -c requirements.txt
+    #   requests
 werkzeug==2.2.2
     # via tensorboard
 wheel==0.37.0
@@ -365,8 +398,11 @@ wheel==0.37.0
     #   tensorboard
 wrapt==1.14.1
     # via tensorflow
-zipp==3.9.0
-    # via importlib-metadata
+zipp==3.16.2
+    # via
+    #   -c requirements.txt
+    #   importlib-metadata
+    #   importlib-resources
 
 # The following packages are considered to be unsafe in a requirements file:
 # pip

@@ -6,7 +6,19 @@ This library houses `JAMIE` along with several utility functions that aid in the
 
 ## Installation Instructions (Ubuntu 20.04, WSL 2.0, Windows 10/11 Pro)
 
-First, create and activate a virtual environment using python 3.9 with `virtualenv` or `conda`,
+First, clone and navigate to the repository.
+```bash
+git clone https://github.com/Oafish1/JAMIE
+cd JAMIE
+
+# JAMIE may also be installed directly from GitHub without cloning, but
+# does not have version controlled dependencies, and is therefore not
+# recommended
+# pip install jamie@git+https://git@github.com/Oafish1/JAMIE
+```
+This process can take several minutes, depending on network speed.
+
+Create and activate a virtual environment using python 3.9 with `virtualenv` or `conda`,
 ```python
 # virtualenv (python 3.9)
 virtualenv env
@@ -17,36 +29,22 @@ conda create -n JAMIE python=3.9
 conda activate JAMIE
 ```
 
-Clone and navigate to the repository.
-```bash
-git clone https://github.com/Oafish1/JAMIE
-cd JAMIE
-
-# JAMIE may also be installed directly from GitHub without cloning, but
-# is not version controlled, and therefore not recommended
-# pip install jamie@git+https://git@github.com/Oafish1/JAMIE
-```
-This process can take several minutes, depending on network speed.
-
 Install dependencies and the local library with `pip`.
 ```bash
 # NOTE: UnionCom and UMAP will not import correctly if installed on Windows as administrator
-# For installation without extras (No SHAP, WR2MD)
-pip install -e .
+# For notebooks or development
+pip install -r requirements-dev.txt
 
-# For example notebooks or development
-# pip install -r requirements-dev.txt
-
+# For installation without extras (No SHAP, WR2MD, notebooks)
+# pip install -r requirements.txt
+# pip install -e .
 ```
 This process usually takes around 5 minutes.
 
 ## Example: Simulation Single-Cell Multi-Modal Data
 This example covers running JAMIE on branching manifold simulation data from [MMD-MA](https://pubmed.ncbi.nlm.nih.gov/34632462/) (Liu J. et al.).  The example takes around 2 minutes to run.  A notebook with this code may be found at `examples/notebooks/sample.ipynb`.
 
-Optionally, start Jupyter Lab and create a new notebook in `JAMIE/examples/notebooks`
-```bash
-jupyter lab
-```
+Optionally, create a new jupyter notebook in `JAMIE/examples/notebooks`
 
 Load two data matrices with an optional prior correspondence matrix.
 ```python

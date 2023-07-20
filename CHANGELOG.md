@@ -1,3 +1,8 @@
+# 4.4.1
+- Actually upgrade `torch` and `torchvision`
+- Adjust `README.md`
+- Fix `pip-tools` generation of `requirements*.txt` files
+
 # 4.4.0
 - Fix certain compatibility issues, specifically for `requirements.dev`
 - Fix `sklearn` dependency
