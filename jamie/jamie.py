@@ -22,9 +22,8 @@ from unioncom.utils import (
     joint_probabilities,
 )
 
-from .model import edModel, edModelVar
-from .nn_funcs import gw_loss, knn_dist, knn_sim, nlma_loss, uc_loss  # noqa
-from .utilities import time_logger, uc_visualize, identity, preclass
+from .model import edModelVar
+from .utilities import time_logger, uc_visualize, preclass
 
 
 class JAMIE(uc.UnionCom):
@@ -85,6 +84,9 @@ class JAMIE(uc.UnionCom):
         self.record_loss = record_loss
         self.enable_memory_logging = enable_memory_logging
 
+        # Determine device
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
         # Default changes
         defaults = {
             'project_mode': 'jamie',
@@ -130,7 +132,6 @@ class JAMIE(uc.UnionCom):
 
         time = time_logger(memory_usage=self.enable_memory_logging)
         init_random_seed(self.manual_seed)
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
         # Test for dataset type (must all be the same)
         self.dataset = dataset
@@ -314,7 +315,7 @@ class JAMIE(uc.UnionCom):
             warnings.warn('1x1 distance matrix, escaping...')
             return torch.ones((1, 1)).float().to(self.device)
 
-        N = np.int(np.maximum(Kx.shape[0], Ky.shape[0]))
+        N = int(np.maximum(Kx.shape[0], Ky.shape[0]))
         Kx = Kx / N
         Ky = Ky / N
         Kx = torch.from_numpy(Kx).float().to(self.device)
@@ -495,21 +496,21 @@ class JAMIE(uc.UnionCom):
             self.dataset[i] = torch.from_numpy(self.dataset[i]).float().to(self.device)
 
         # Batch size setup, mainly from UnionCom
-        len_dataloader = np.int(np.max(self.row)/self.batch_size)
+        len_dataloader = int(np.max(self.row)/self.batch_size)
         if len_dataloader == 0:
             len_dataloader = 1
             self.batch_size = np.max(self.row)
 
         # Sampling method setup
         self.PF_Ratio = 1 if self.PF_Ratio is None else self.PF_Ratio
-        if self.P.shape[0] == self.P.shape[1] and np.abs(self.P - np.eye(self.row[0])).sum() == 0:
+        if self.P.shape[0] == self.P.shape[1] and torch.abs(self.P - torch.eye(self.row[0], device=self.device)).sum() == 0:
             self.sampling_method = 'diag'
 
             # self.PF_Ratio = 1 if self.PF_Ratio is None else self.PF_Ratio
 
-        elif np.abs(self.P).sum() != 0:
+        elif torch.abs(self.P).sum() != 0:
             self.sampling_method = 'hybrid'
-            self.corr_samples = np.argwhere(self.P > 0)
+            self.corr_samples = torch.argwhere(self.P > 0).cpu()
             self.num_corr = len(self.corr_samples[0])
 
             # self.true_ratio = min(float((1.*(self.P.abs().sum(i) > 0)).mean()) for i in range(self.dataset_num))
@@ -790,33 +791,37 @@ class JAMIE(uc.UnionCom):
             timer.aggregate()
         return integrated_data
 
-    def modal_predict(self, data, modality):
+    def modal_predict(self, data, modality, pre_transformed=False):
         """Predict the opposite modality from dataset ``data`` in modality ``modality``"""
         assert self.model is not None, 'Model must be trained before modal prediction.'
 
         to_modality = (modality + 1) % self.dataset_num
-        return self.model.impute(data, compose=[modality, to_modality])
+        if not pre_transformed:
+            data = self.model.preprocessing[modality](data)
+        data = torch.tensor(data).float().to(self.device)
+        decoded = self.model.impute(data, compose=[modality, to_modality])
+        return np.array(self.model.preprocessing_inverse[to_modality](decoded.detach().cpu()))
 
     def transform(self, dataset, corr=None, pre_transformed=False):
         """Transform data using an already trained model"""
         if corr is None:
             # Doesn't actually do anything
             if dataset[0].shape[0] == dataset[1].shape[0]:
-                corr = torch.eye(dataset[0].shape[0])
+                corr = torch.eye(dataset[0].shape[0], device=self.device)
             else:
-                corr = torch.zeros((dataset[0].shape[0], dataset[1].shape[0]))
+                corr = torch.zeros((dataset[0].shape[0], dataset[1].shape[0]), device=self.device)
         if not pre_transformed:
             dataset = [self.model.preprocessing[i](dataset[i]) for i in range(len(dataset))]
-        dataset = [torch.Tensor(d) for d in dataset]
+        dataset = [torch.tensor(d).float().to(self.device) for d in dataset]
         integrated = self.model(*dataset, corr=corr)[0]
         return [d.detach().cpu().numpy() for d in integrated]
 
-    def transform_one(self, dataset, i, pre_transformed=False):
+    def transform_one(self, data, i, pre_transformed=False):
         """Transform data using an already trained model"""
         if not pre_transformed:
-            dataset = self.model.preprocessing[i](dataset)
-        dataset = torch.Tensor(dataset)
-        integrated = self.model.fc_mus[i](self.model.encoders[i](dataset))
+            data = self.model.preprocessing[i](data)
+        data = torch.tensor(data).float().to(self.device)
+        integrated = self.model.fc_mus[i](self.model.encoders[i](data))
         return integrated.detach().cpu().numpy()
 
     def compute_distances(self, save_dist=True):
@@ -833,7 +838,10 @@ class JAMIE(uc.UnionCom):
 
             if self.distance_mode == 'geodesic':
                 def distance_function(df):
-                    distances = geodesic_distances(df, self.kmax)
+                    with warnings.catch_warnings() as w:
+                        # Throws warning for using 'is not' instead of '!='
+                        warnings.simplefilter("ignore")
+                        distances = geodesic_distances(df, self.kmax)
                     return np.array(distances)
             elif self.distance_mode == 'spearman':
                 # Note: Method may not work if empty features are given
@@ -948,5 +956,5 @@ class JAMIE(uc.UnionCom):
         torch.save(self.model, f)
 
     def load_model(self, f):
-        self.model = torch.load(f)
+        self.model = torch.load(f).to(self.device)
         self.dataset_num = self.model.num_modalities

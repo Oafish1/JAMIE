@@ -25,7 +25,7 @@ setup(
         'scikit-learn-extra',
         'scipy',
         'seaborn',
-        'sklearn',
+        'scikit-learn',
         'torch',
         'torchvision',
         'umap-learn',
@@ -33,17 +33,9 @@ setup(
     ],
     extras_require={
         'dev': [
-            'flake8',
-            'flake8-docstrings',
-            'flake8-import-order',
-            'openpyxl',
             'pip-tools',
-            'pytest',
-            'pytest-cov',
         ],
         'notebooks': [
-            'ipywidgets',
-            'jupyterlab',
             'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD@v1.2.5',
             'openpyxl',
             'shap',

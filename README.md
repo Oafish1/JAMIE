@@ -5,14 +5,8 @@ Single-cell multi-modal datasets have emerged to measure various characteristics
 This library houses `JAMIE` along with several utility functions that aid in the evaluation of multi-modal integration and imputation techniques.  Paper figures are generated in `examples/notebooks` and source data can be found in `examples/data`.  JAMIE is built on the framework of [UnionCom](https://github.com/caokai1073/UnionCom).
 
 ## Installation Instructions (Ubuntu 20.04, WSL 2.0, Windows 10/11 Pro)
-First, clone and navigate to the repository.
-```bash
-git clone https://github.com/Oafish1/JAMIE
-cd JAMIE
-```
-This process can take several minutes, depending on network speed.
 
-Create and activate a virtual environment using python 3.9 with `virtualenv` or `conda`,
+First, create and activate a virtual environment using python 3.9 with `virtualenv` or `conda`,
 ```python
 # virtualenv (python 3.9)
 virtualenv env
@@ -23,15 +17,25 @@ conda create -n JAMIE python=3.9
 conda activate JAMIE
 ```
 
+Clone and navigate to the repository.
+```bash
+git clone https://github.com/Oafish1/JAMIE
+cd JAMIE
+
+# JAMIE may also be installed directly from GitHub without cloning, but
+# is not version controlled, and therefore not recommended
+# pip install jamie@git+https://git@github.com/Oafish1/JAMIE
+```
+This process can take several minutes, depending on network speed.
+
 Install dependencies and the local library with `pip`.
 ```bash
 # NOTE: UnionCom and UMAP will not import correctly if installed on Windows as administrator
-# For example notebooks or development
-pip install -r requirements-dev.txt
+# For installation without extras (No SHAP, WR2MD)
+pip install -e .
 
-# For installation without extras (Jupyter Lab, SHAP, WR2MD)
-# pip install -r requirements.txt
-# pip install -e .
+# For example notebooks or development
+# pip install -r requirements-dev.txt
 
 ```
 This process usually takes around 5 minutes.
@@ -63,8 +67,8 @@ import matplotlib.pyplot as plt
 from jamie.evaluation import plot_regular
 
 # Load cell-type labels
-type1 = np.loadtxt("../data/UnionCom/MMD/s1_type1.txt").astype(np.int)
-type2 = np.loadtxt("../data/UnionCom/MMD/s1_type2.txt").astype(np.int)
+type1 = np.loadtxt("../data/UnionCom/MMD/s1_type1.txt").astype(int)
+type2 = np.loadtxt("../data/UnionCom/MMD/s1_type2.txt").astype(int)
 type1 = np.array([f'Cell Type {i}' for i in type1])
 type2 = np.array([f'Cell Type {i}' for i in type2])
 

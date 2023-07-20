@@ -2,6 +2,7 @@ import contextlib
 import math
 from time import perf_counter
 import tracemalloc
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -661,7 +662,10 @@ class preclass:
         if self.pca is not None:
             out = self.pca.transform(out)
         out = out - self.sample.mean(self.axis)
-        out = out / self.sample.std(self.axis)
+        with warnings.catch_warnings() as w:
+            # Catch NAN and set to 0
+            warnings.simplefilter("ignore")
+            out = out / self.sample.std(self.axis)
         out[np.isnan(out)] = 0
         return out
 

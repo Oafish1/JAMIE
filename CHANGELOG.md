@@ -1,3 +1,13 @@
+# 4.4.0
+- Fix certain compatibility issues, specifically for `requirements.dev`
+- Fix `sklearn` dependency
+- GPU compatibility
+- `np.int` deprecation updates
+- `README.md` no clone install support
+- Slightly changed `edModelVar.impute` behavior to expect preprocessed input
+- Suppress many unimpactful warnings
+- Upgrade `PyTorch` version
+
 # 4.3.3
 - Small `sequential` argument fix
 - SVG visualizations
