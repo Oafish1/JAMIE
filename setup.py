@@ -21,6 +21,7 @@ setup(
         'matplotlib',
         'numpy',
         'pandas',
+        'pynndescent==0.5.8',  # UMAP Incompatibility
         'scanpy',
         'scikit-learn-extra',
         'scipy',
@@ -36,7 +37,7 @@ setup(
             'pip-tools',
         ],
         'notebooks': [
-            'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD@v1.2.5',
+            'mmd_wrapper @ git+https://git@github.com/Oafish1/WR2MD@v1.2.5a',
             'openpyxl',
             'shap',
         ],

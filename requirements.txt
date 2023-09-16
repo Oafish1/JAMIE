@@ -111,8 +111,10 @@ pillow==10.0.0
     # via
     #   matplotlib
     #   torchvision
-pynndescent==0.5.10
-    # via umap-learn
+pynndescent==0.5.8
+    # via
+    #   JAMIE (setup.py)
+    #   umap-learn
 pyparsing==3.0.9
     # via matplotlib
 python-dateutil==2.8.2

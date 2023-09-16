@@ -1,3 +1,12 @@
+# 4.4.2
+- Complete reruns of all results (NOTE: Results likely differ when running with and without pre-trained models)
+- Correct unintuitive sequential evaluation behavior in `evaluate_impact` which caused erroneous chromatin region classification and negatively affected gene prioritization results
+- `np.int` deprecation update for `MMD-MA.ipynb`
+- Fix `sklearn` issue with `np.matrix` in `scGLUE` notebook
+- `run.sh` revised for more complex development solutions
+- `SHAP` version updated to fix deprecated `np.bool` reference
+- Small notebook revisions, as well as changes from package updates
+
 # 4.4.1
 - Actually upgrade `torch` and `torchvision`
 - Adjust `README.md`

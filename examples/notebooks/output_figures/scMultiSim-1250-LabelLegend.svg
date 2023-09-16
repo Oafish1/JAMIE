@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
   "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg height="52.2pt" version="1.1" viewBox="0 0 455.4 52.2" width="455.4pt" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="455.4pt" height="52.2pt" viewBox="0 0 455.4 52.2" xmlns="http://www.w3.org/2000/svg" version="1.1">
  <metadata>
-  <rdf:RDF xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
    <cc:Work>
     <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
-    <dc:date>2023-04-27T13:28:03.406789</dc:date>
+    <dc:date>2023-09-02T13:54:46.497237</dc:date>
     <dc:format>image/svg+xml</dc:format>
     <dc:creator>
      <cc:Agent>
-      <dc:title>Matplotlib v3.4.3, https://matplotlib.org/</dc:title>
+      <dc:title>Matplotlib v3.7.2, https://matplotlib.org/</dc:title>
      </cc:Agent>
     </dc:creator>
    </cc:Work>
   </rdf:RDF>
  </metadata>
  <defs>
-  <style type="text/css">*{stroke-linecap:butt;stroke-linejoin:round;}</style>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
  </defs>
  <g id="figure_1">
   <g id="patch_1">
@@ -26,18 +26,17 @@ L 455.4 52.2
 L 455.4 -0 
 L 0 -0 
 z
-" style="fill:#ffffff;"/>
+" style="fill: #ffffff"/>
   </g>
   <g id="axes_1">
    <g id="legend_1">
     <g id="line2d_1">
      <path d="M 4.728281 9.139375 
+L 15.728281 9.139375 
 L 26.728281 9.139375 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_2">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m5360055c98" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -47,23 +46,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="md4d30bcf6a" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#f77189;stroke:#ffffff;" x="15.728281" xlink:href="#md4d30bcf6a" y="9.139375"/>
+      <use xlink:href="#m5360055c98" x="15.728281" y="9.139375" style="fill: #f77189; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_1">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 35.528281, 12.989375)" x="35.528281" y="12.989375">Cell Type  1</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="35.528281" y="12.989375" transform="rotate(-0 35.528281 12.989375)">Cell Type  1</text>
     </g>
-    <g id="line2d_3">
+    <g id="line2d_2">
      <path d="M 4.728281 25.285312 
+L 15.728281 25.285312 
 L 26.728281 25.285312 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_4">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m1b19845dc3" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -73,23 +71,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m5435742b77" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#dc8932;stroke:#ffffff;" x="15.728281" xlink:href="#m5435742b77" y="25.285312"/>
+      <use xlink:href="#m1b19845dc3" x="15.728281" y="25.285312" style="fill: #dc8932; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_2">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 35.528281, 29.135312)" x="35.528281" y="29.135312">Cell Type  2</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="35.528281" y="29.135312" transform="rotate(-0 35.528281 29.135312)">Cell Type  2</text>
     </g>
-    <g id="line2d_5">
+    <g id="line2d_3">
      <path d="M 4.728281 41.43125 
+L 15.728281 41.43125 
 L 26.728281 41.43125 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_6">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m60aa6d3d20" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -99,23 +96,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m4ebebb5fdf" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#ae9d31;stroke:#ffffff;" x="15.728281" xlink:href="#m4ebebb5fdf" y="41.43125"/>
+      <use xlink:href="#m60aa6d3d20" x="15.728281" y="41.43125" style="fill: #ae9d31; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_3">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 35.528281, 45.28125)" x="35.528281" y="45.28125">Cell Type  3</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="35.528281" y="45.28125" transform="rotate(-0 35.528281 45.28125)">Cell Type  3</text>
     </g>
-    <g id="line2d_7">
+    <g id="line2d_4">
      <path d="M 120.838437 9.139375 
+L 131.838437 9.139375 
 L 142.838437 9.139375 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_8">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m070edd07ac" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -125,23 +121,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m8421a7ee53" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#77ab31;stroke:#ffffff;" x="131.838437" xlink:href="#m8421a7ee53" y="9.139375"/>
+      <use xlink:href="#m070edd07ac" x="131.838437" y="9.139375" style="fill: #77ab31; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_4">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 151.638437, 12.989375)" x="151.638437" y="12.989375">Cell Type  4</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="151.638437" y="12.989375" transform="rotate(-0 151.638437 12.989375)">Cell Type  4</text>
     </g>
-    <g id="line2d_9">
+    <g id="line2d_5">
      <path d="M 120.838437 25.285312 
+L 131.838437 25.285312 
 L 142.838437 25.285312 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_10">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m311eac044a" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -151,23 +146,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m43c0f69354" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#33b07a;stroke:#ffffff;" x="131.838437" xlink:href="#m43c0f69354" y="25.285312"/>
+      <use xlink:href="#m311eac044a" x="131.838437" y="25.285312" style="fill: #33b07a; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_5">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 151.638437, 29.135312)" x="151.638437" y="29.135312">Cell Type  5</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="151.638437" y="29.135312" transform="rotate(-0 151.638437 29.135312)">Cell Type  5</text>
     </g>
-    <g id="line2d_11">
+    <g id="line2d_6">
      <path d="M 120.838437 41.43125 
+L 131.838437 41.43125 
 L 142.838437 41.43125 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_12">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m035c5d9ec9" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -177,23 +171,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="me22c5928f3" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#36ada4;stroke:#ffffff;" x="131.838437" xlink:href="#me22c5928f3" y="41.43125"/>
+      <use xlink:href="#m035c5d9ec9" x="131.838437" y="41.43125" style="fill: #36ada4; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_6">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 151.638437, 45.28125)" x="151.638437" y="45.28125">Cell Type  6</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="151.638437" y="45.28125" transform="rotate(-0 151.638437 45.28125)">Cell Type  6</text>
     </g>
-    <g id="line2d_13">
+    <g id="line2d_7">
      <path d="M 236.948594 9.139375 
+L 247.948594 9.139375 
 L 258.948594 9.139375 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_14">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m5dc26a0e16" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -203,23 +196,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m7e1e7c1be0" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#38a9c5;stroke:#ffffff;" x="247.948594" xlink:href="#m7e1e7c1be0" y="9.139375"/>
+      <use xlink:href="#m5dc26a0e16" x="247.948594" y="9.139375" style="fill: #38a9c5; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_7">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 267.748594, 12.989375)" x="267.748594" y="12.989375">Cell Type  7</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="267.748594" y="12.989375" transform="rotate(-0 267.748594 12.989375)">Cell Type  7</text>
     </g>
-    <g id="line2d_15">
+    <g id="line2d_8">
      <path d="M 236.948594 25.285312 
+L 247.948594 25.285312 
 L 258.948594 25.285312 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_16">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="mcdbc4c6f81" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -229,23 +221,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m154ab8370e" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#6e9bf4;stroke:#ffffff;" x="247.948594" xlink:href="#m154ab8370e" y="25.285312"/>
+      <use xlink:href="#mcdbc4c6f81" x="247.948594" y="25.285312" style="fill: #6e9bf4; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_8">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 267.748594, 29.135312)" x="267.748594" y="29.135312">Cell Type  8</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="267.748594" y="29.135312" transform="rotate(-0 267.748594 29.135312)">Cell Type  8</text>
     </g>
-    <g id="line2d_17">
+    <g id="line2d_9">
      <path d="M 353.05875 9.139375 
+L 364.05875 9.139375 
 L 375.05875 9.139375 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_18">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m011b53cf11" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -255,23 +246,22 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="m38df8f1349" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#cc7af4;stroke:#ffffff;" x="364.05875" xlink:href="#m38df8f1349" y="9.139375"/>
+      <use xlink:href="#m011b53cf11" x="364.05875" y="9.139375" style="fill: #cc7af4; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_9">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 383.85875, 12.989375)" x="383.85875" y="12.989375">Cell Type  9</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="383.85875" y="12.989375" transform="rotate(-0 383.85875 12.989375)">Cell Type  9</text>
     </g>
-    <g id="line2d_19">
+    <g id="line2d_10">
      <path d="M 353.05875 25.285312 
+L 364.05875 25.285312 
 L 375.05875 25.285312 
-" style="fill:none;stroke:#ffffff;stroke-linecap:round;stroke-width:1.5;"/>
-    </g>
-    <g id="line2d_20">
+" style="fill: none; stroke: #ffffff; stroke-width: 1.5; stroke-linecap: round"/>
      <defs>
-      <path d="M 0 5 
+      <path id="m6e1779e1d0" d="M 0 5 
 C 1.326016 5 2.597899 4.473168 3.535534 3.535534 
 C 4.473168 2.597899 5 1.326016 5 0 
 C 5 -1.326016 4.473168 -2.597899 3.535534 -3.535534 
@@ -281,14 +271,14 @@ C -4.473168 -2.597899 -5 -1.326016 -5 0
 C -5 1.326016 -4.473168 2.597899 -3.535534 3.535534 
 C -2.597899 4.473168 -1.326016 5 0 5 
 z
-" id="me7628e99ec" style="stroke:#ffffff;"/>
+" style="stroke: #ffffff"/>
      </defs>
      <g>
-      <use style="fill:#f565cc;stroke:#ffffff;" x="364.05875" xlink:href="#me7628e99ec" y="25.285312"/>
+      <use xlink:href="#m6e1779e1d0" x="364.05875" y="25.285312" style="fill: #f565cc; stroke: #ffffff"/>
      </g>
     </g>
     <g id="text_10">
-     <text style="fill:#262626;font-family:DejaVu Sans;font-size:11px;font-stretch:normal;font-style:normal;font-weight:normal;text-anchor:start;" transform="rotate(-0, 383.85875, 29.135312)" x="383.85875" y="29.135312">Cell Type 10</text>
+     <text style="fill: #262626; font: 11px 'Arial', 'DejaVu Sans', 'Liberation Sans', 'Bitstream Vera Sans', sans-serif; text-anchor: start" x="383.85875" y="29.135312" transform="rotate(-0 383.85875 29.135312)">Cell Type 10</text>
     </g>
    </g>
   </g>

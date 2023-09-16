@@ -962,7 +962,7 @@ def plot_impact(
     plt.xticks(rotation=80)
 
 
-def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', sequential=True, scan=None, scan_samples=500, seed=42):
+def evaluate_impact(function, perf_function, in_data, true, features=None, idx=None, mode='replace', sequential=False, scan=None, scan_samples=500, seed=42):
     """Get impact values"""
     assert mode in ['replace', 'keep']
     if seed is not None:
