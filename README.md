@@ -1,4 +1,4 @@
-# JAMIE: Joint Variational Autoencoders for Multimodal Imputation and Embedding
+# Joint Variational Autoencoders for Multimodal Imputation and Embedding (JAMIE)
 
 Single-cell multi-modal datasets have emerged to measure various characteristics of individual cells, enabling a deep understanding of cellular and molecular mechanisms. However, generating multi-modal data for many cells remains costly and challenging. Thus, missing modalities happens frequently, becoming a major obstacle to understanding mechanisms. Recently, machine learning approaches have been developed to impute cell data but typically use fully matched multi-modal data and learn common latent embeddings that potentially miss modality specificity. To address these issues, we developed a novel machine learning model with open-source tool, Joint variational Autoencoders for Multi-modal Imputation and Embedding (JAMIE). JAMIE takes single-cell multi-modal data that can have partially matched samples across modalities. Variational autoencoders learn the latent embeddings of each modality. Then, embeddings from matched samples across modalities are aggregated to identify joint cross-modal latent embeddings before reconstruction. To perform cross-modal imputation from one to another, the latent embeddings can be used with the opposite decoder.
 
@@ -147,6 +147,8 @@ plt.savefig('../../img/simulation_imputed.png', dpi=300, bbox_inches='tight')
 Detailed comparisons and additional visualization functions can be found in `examples/notebooks`.
 
 ## Citations
-Liu J, Huang Y, Singh R, Vert JP, Noble WS. Jointly Embedding Multiple Single-Cell Omics Measurements. Algorithms Bioinform. 2019 Sep 3;143:10. doi: 10.4230/LIPIcs.WABI.2019.10. PMID: 34632462; PMCID: PMC8496402.
+Cohen Kalafut, N., Huang, X. & Wang, D. Joint variational autoencoders for multimodal imputation and embedding. Nat Mach Intell 5, 631–642 (2023). https://doi.org/10.1038/s42256-023-00663-z
 
 Kai C, Xiangqi B, Yiguang H, Lin W, Unsupervised topological alignment for single-cell multi-omics integration, Bioinformatics, July 2020. doi: 10.1093/bioinformatics/btaa443.
+
+Liu J, Huang Y, Singh R, Vert JP, Noble WS. Jointly Embedding Multiple Single-Cell Omics Measurements. Algorithms Bioinform. 2019 Sep 3;143:10. doi: 10.4230/LIPIcs.WABI.2019.10. PMID: 34632462; PMCID: PMC8496402.

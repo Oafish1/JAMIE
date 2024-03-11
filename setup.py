@@ -9,7 +9,7 @@ with open('README.md') as r:
 setup(
     name='JAMIE',
     author='Noah Cohen Kalafut',
-    description='Joint Autoencoders for Multi-Modal Imputation and Embedding',
+    description='Joint Variational Autoencoders for Multi-Modal Imputation and Embedding',
     long_description=readme,
     long_description_content_type="text/markdown",
     version=__version__,
