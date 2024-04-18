@@ -1,3 +1,6 @@
+# 4.4.3
+- Add GPU implementation warning
+
 # 4.4.2
 - Complete reruns of all results (NOTE: Results likely differ when running with and without pre-trained models)
 - Correct unintuitive sequential evaluation behavior in `evaluate_impact` which caused erroneous chromatin region classification and negatively affected gene prioritization results

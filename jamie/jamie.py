@@ -25,6 +25,14 @@ from unioncom.utils import (
 from .model import edModelVar
 from .utilities import time_logger, uc_visualize, preclass
 
+# GPU implementation warning
+if not torch.cuda.is_available():
+    warnings.warn(
+        'JAMIE\'s GPU implementation is currently incomplete, please try setting '
+        'argument `use_f_tilde` to `False` upon initialization or use CPU if '
+        'problems occur.',
+        RuntimeWarning)
+
 
 class JAMIE(uc.UnionCom):
     """
