@@ -1,3 +1,6 @@
+# 4.4.4
+- Add `jamie` corr method warning
+
 # 4.4.3
 - Add GPU implementation warning
 

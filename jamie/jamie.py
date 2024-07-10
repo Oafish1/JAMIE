@@ -239,6 +239,10 @@ class JAMIE(uc.UnionCom):
                         dy=self.col[j],
                     )
                 elif self.corr_method == 'jamie':
+                    warnings.warn(
+                        'Correlation method `jamie` is currently a WIP, and does not'
+                        ' produce reliable results'
+                    )
                     F = self.com_corr([self.dist[i], self.dist[j]])
                 cor_pairs.append(F)
 
@@ -246,7 +250,7 @@ class JAMIE(uc.UnionCom):
         return cor_pairs
 
     def com_corr(self, dist):
-        """Estimate correspondence"""
+        """Estimate correspondence (WIP, currently does not estimate properly)"""
         Kx, Ky = dist
         n, m = np.shape(Kx)[0], np.shape(Ky)[0]
         Kx = torch.Tensor(Kx)
