@@ -92,6 +92,7 @@ Several arguments may be passed to `JAMIE`, including:
 - `epoch_dnn = 10,000`: Maximum number of epochs.
 - `batch_size = 512`: Batch size
 - `pca_dim = [512, 512]`: If `None`, does not perform PCA.  Otherwise, controls the number of principal components to use while processing each input dataset
+- `loss_weights = [1, 1, 1, 1]`: Weights for the KL, Reconstruction, Cosine, and F losses, respectively
 - `use_early_stop = True`: If `True`, uses early stopping algorithm
 - `min_epochs = 2,500`: Number of epochs before early stopping can take effect.  Also controls the length of KL annealing
 - `dropout = 0.6`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` for everything else

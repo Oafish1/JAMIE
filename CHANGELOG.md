@@ -1,3 +1,8 @@
+# 4.4.5
+- Correct GPU implementation warning behavior
+- Device automatic selection removed
+- `README` updates
+
 # 4.4.4
 - Add `jamie` corr method warning
 

@@ -25,14 +25,6 @@ from unioncom.utils import (
 from .model import edModelVar
 from .utilities import time_logger, uc_visualize, preclass
 
-# GPU implementation warning
-if not torch.cuda.is_available():
-    warnings.warn(
-        'JAMIE\'s GPU implementation is currently incomplete, please try setting '
-        'argument `use_f_tilde` to `False` upon initialization or use CPU if '
-        'problems occur.',
-        RuntimeWarning)
-
 
 class JAMIE(uc.UnionCom):
     """
@@ -66,6 +58,7 @@ class JAMIE(uc.UnionCom):
         log_debug=100,
         record_loss=True,
         enable_memory_logging=False,
+        device='cpu',
         **kwargs
     ):
         self.match_result = match_result
@@ -93,7 +86,14 @@ class JAMIE(uc.UnionCom):
         self.enable_memory_logging = enable_memory_logging
 
         # Determine device
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.device = device
+        # GPU implementation warning
+        if device != 'cpu':
+            warnings.warn(
+                'JAMIE\'s GPU implementation is currently incomplete, please try setting '
+                'argument `use_f_tilde` to `False` upon initialization or use CPU if '
+                'problems occur.',
+                RuntimeWarning)
 
         # Default changes
         defaults = {
