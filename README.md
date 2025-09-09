@@ -41,6 +41,10 @@ pip install -r requirements-dev.txt
 ```
 This process usually takes around 5 minutes.
 
+## Common Issues
+
+The `JAMIE` model estimates cell-cell correspondence in a `cell x cell` tensor. If running data with many cells and memory issues arise, try the argument `use_f_tilde=False` when initializing. This will incur a slight performance hit, but will require less memory. Additionally, the manual correspondence matrix, `corr`, supports sparse matrices (as of version `4.5.0`). If the modalities are aligned, `corr=None` will automatically use a sparse identity matrix. This technique will also dramatically decrease memory usage at the cost of computation time.
+
 ## Example: Simulation Single-Cell Multi-Modal Data
 This example covers running JAMIE on branching manifold simulation data from [MMD-MA](https://pubmed.ncbi.nlm.nih.gov/34632462/) (Liu J. et al.).  The example takes around 2 minutes to run.  A notebook with this code may be found at `examples/notebooks/sample.ipynb`.
 
@@ -85,18 +89,21 @@ from jamie import JAMIE
 
 jm = JAMIE(min_epochs=500)
 integrated_data = jm.fit_transform(dataset=[data1, data2], P=corr)
+# Please see `Common Issues` if encountering memory issues
 ```
 
 Several arguments may be passed to `JAMIE`, including:
 - `output_dim = 32`: The number of latent features.
 - `epoch_dnn = 10,000`: Maximum number of epochs.
-- `batch_size = 512`: Batch size
+- `batch_size = 512`: Batch size.
 - `pca_dim = [512, 512]`: If `None`, does not perform PCA.  Otherwise, controls the number of principal components to use while processing each input dataset
-- `loss_weights = [1, 1, 1, 1]`: Weights for the KL, Reconstruction, Cosine, and F losses, respectively
-- `use_early_stop = True`: If `True`, uses early stopping algorithm
-- `min_epochs = 2,500`: Number of epochs before early stopping can take effect.  Also controls the length of KL annealing
-- `dropout = 0.6`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` for everything else
-- `debug = False`: Print individual loss values if `True`
+- `use_f_tilde = True`: Perform correspondence estimation. Disabling this can save memory for applications with many cells.
+- `loss_weights = [1, 1, 1, 1]`: Weights for the KL, Reconstruction, Cosine, and F losses, respectively.
+- `use_early_stop = True`: Use early stopping algorithm. Otherwise, runs for `epoch_DNN=10_000` epochs.
+- `min_epochs = 2,500`: Number of epochs before early stopping can take effect.  Also controls the length of KL annealing.
+- `dropout = 0.6`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` for everything else.
+- `debug = False`: Print individual loss values.
+- `device = 'cpu': Device to run on. For GPU, use `'cuda'`.
 
 The model can be saved and loaded in an `h5` file format
 ```python

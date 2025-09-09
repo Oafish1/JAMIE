@@ -23,7 +23,7 @@ from unioncom.utils import (
 )
 
 from .model import edModelVar
-from .utilities import time_logger, uc_visualize, preclass
+from .utilities import sparse_index, time_logger, uc_visualize, preclass
 
 
 class JAMIE(uc.UnionCom):
@@ -90,9 +90,9 @@ class JAMIE(uc.UnionCom):
         # GPU implementation warning
         if device != 'cpu':
             warnings.warn(
-                'JAMIE\'s GPU implementation is currently incomplete, please try setting '
-                'argument `use_f_tilde` to `False` upon initialization or use CPU if '
-                'problems occur.',
+                'Detected JAMIE on GPU device. In the case of memory issues, try setting the '
+                'argument `use_f_tilde` to `False` upon initialization and using a sparse correspondence '
+                'matrix. Otherwise, try running on CPU.',
                 RuntimeWarning)
 
         # Default changes
@@ -170,19 +170,23 @@ class JAMIE(uc.UnionCom):
 
         # Find correspondence between samples
         if not self.use_f_tilde:
-            self.match_result = [np.zeros([d.shape[0] for d in self.dataset])]
+            # self.match_result = [np.zeros([d.shape[0] for d in self.dataset])]
+            self.match_result = [torch.sparse_coo_tensor([[], []], [], [d.shape[0] for d in self.dataset]).coalesce()]
         self.match_result = self.match() if self.match_result is None else self.match_result
-        pairs_x = []
-        pairs_y = []
-        for i in range(self.dataset_num - 1):
-            cost = np.max(self.match_result[i]) - self.match_result[i]
-            row_ind, col_ind = linear_sum_assignment(cost)
-            pairs_x.append(row_ind)
-            pairs_y.append(col_ind)
         time.log('Correspondence')
 
         #  Project to common embedding
         if self.project_mode == 'tsne':
+            # Get pairs
+            pairs_x = []
+            pairs_y = []
+            for i in range(self.dataset_num - 1):
+                cost = np.max(self.match_result[i]) - self.match_result[i]
+                row_ind, col_ind = linear_sum_assignment(cost)
+                pairs_x.append(row_ind)
+                pairs_y.append(col_ind)
+
+            # Perform projection
             P_joint = []
             for i in range(self.dataset_num):
                 P_joint.append(joint_probabilities(self.dist[i], self.perplexity))
@@ -423,12 +427,17 @@ class JAMIE(uc.UnionCom):
         if self.P is None:
             # If not given, assume total alignment iff datasets are same size
             if self.row[0] == self.row[1]:
-                self.P = np.eye(self.row[0])
+                # self.P = np.eye(self.row[0])
+                self.P = torch.sparse.spdiags(torch.ones(self.row[0]), torch.tensor([0]), self.row).coalesce()
             else:
-                self.P = np.zeros((self.row[0], self.row[1]))
+                # self.P = np.zeros((self.row[0], self.row[1]))
+                self.P = torch.sparse_coo_tensor([[], []], [], self.row).coalesce()
 
-        self.P = torch.Tensor(self.P).float().to(self.device)
-        self.F = torch.Tensor(W[0][1]).float().to(self.device)
+        if isinstance(self.P, np.ndarray): self.P = torch.Tensor(self.P)
+        if isinstance(W[0][1], np.ndarray): self.F = torch.Tensor(W[0][1])
+        else: self.F = W[0][1]
+        self.P = self.P.float().to(self.device)
+        self.F = self.F.float().to(self.device)
 
         timer = time_logger()
         pca_list = []
@@ -515,14 +524,17 @@ class JAMIE(uc.UnionCom):
 
         # Sampling method setup
         self.PF_Ratio = 1 if self.PF_Ratio is None else self.PF_Ratio
-        if self.P.shape[0] == self.P.shape[1] and torch.abs(self.P - torch.eye(self.row[0], device=self.device)).sum() == 0:
+        if self.P.is_sparse: has_off_diagonals = (self.P.indices()[0] != self.P.indices()[1]).any()
+        else: has_off_diagonals = torch.abs(self.P - torch.eye(self.row[0], device=self.device)).sum() == 0
+        if self.P.shape[0] == self.P.shape[1] and has_off_diagonals:
             self.sampling_method = 'diag'
 
             # self.PF_Ratio = 1 if self.PF_Ratio is None else self.PF_Ratio
 
         elif torch.abs(self.P).sum() != 0:
             self.sampling_method = 'hybrid'
-            self.corr_samples = torch.argwhere(self.P > 0).cpu()
+            if self.P.is_sparse: self.corr_samples = self.P.indices().T.cpu()
+            else: self.corr_samples = torch.argwhere(self.P > 0).cpu()
             self.num_corr = len(self.corr_samples[0])
 
             # self.true_ratio = min(float((1.*(self.P.abs().sum(i) > 0)).mean()) for i in range(self.dataset_num))
@@ -583,13 +595,13 @@ class JAMIE(uc.UnionCom):
                 data = [self.dataset[i][random_batch[i]] for i in range(self.dataset_num)]
 
                 # P setup
-                P = self.P[random_batch[0]][:, random_batch[1]]
+                P = sparse_index(self.P, torch.tensor(random_batch[0]).to(self.device), torch.tensor(random_batch[1]).to(self.device))
                 P_sum = P.sum(axis=1)
                 P_sum[P_sum==0] = 1
                 P = P / P_sum[:, None]
 
                 # F setup
-                F = self.F[random_batch[0]][:, random_batch[1]]
+                F = sparse_index(self.F, torch.tensor(random_batch[0]).to(self.device), torch.tensor(random_batch[1]).to(self.device))
                 F_sum = F.sum(axis=1)
                 F_sum[F_sum==0] = 1
                 F = F / F_sum[:, None]
@@ -792,9 +804,14 @@ class JAMIE(uc.UnionCom):
                     break
 
         self.model.eval()
-        corr_P = self.P / self.P.sum(0)[None, :]
-        corr_F = self.F / self.F.sum(0)[None, :]
-        corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F
+        if self.P.is_sparse: corr_P = self.P  # No scaling for sparse matrices
+        else: corr_P = self.P / self.P.sum(0)[None, :]
+        if self.F.is_sparse: corr_F = self.F  # No scaling for sparse matrices
+        else:  corr_F = self.F / self.F.sum(0)[None, :]
+        if self.P.is_sparse ^ self.F.is_sparse:
+            if self.P.is_sparse: corr_P = self.P.to_dense()
+            else: corr_F = self.F.to_dense()
+        corr = self.PF_Ratio * corr_P + (1-self.PF_Ratio) * corr_F  # Only used in this instance
         integrated_data = self.model(*self.dataset, corr=corr)[0]
         integrated_data = [d.detach().cpu().numpy() for d in integrated_data]
         timer.log('Output')
@@ -819,9 +836,11 @@ class JAMIE(uc.UnionCom):
         if corr is None:
             # Doesn't actually do anything
             if dataset[0].shape[0] == dataset[1].shape[0]:
-                corr = torch.eye(dataset[0].shape[0], device=self.device)
+                # corr = torch.eye(dataset[0].shape[0], device=self.device)
+                corr = torch.sparse.spdiags(torch.ones(self.row[0]), torch.tensor([0]), [d.shape[0] for d in dataset]).coalesce().to(self.device)
             else:
-                corr = torch.zeros((dataset[0].shape[0], dataset[1].shape[0]), device=self.device)
+                # corr = torch.zeros((dataset[0].shape[0], dataset[1].shape[0]), device=self.device)
+                corr = torch.sparse_coo_tensor([[], []], [], [d.shape[0] for d in dataset]).coalesce().to(self.device)
         if not pre_transformed:
             dataset = [self.model.preprocessing[i](dataset[i]) for i in range(len(dataset))]
         dataset = [torch.tensor(d).float().to(self.device) for d in dataset]

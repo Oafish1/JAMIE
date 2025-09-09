@@ -1,3 +1,9 @@
+# 4.5.0
+- Add sparse `corr` compatibility and switch default generative behavior
+- Add sparse matrix indexing utiltity function
+- GPU warning updates
+- `README` updates with common issues and more arguments
+
 # 4.4.5
 - Correct GPU implementation warning behavior
 - Device automatic selection removed

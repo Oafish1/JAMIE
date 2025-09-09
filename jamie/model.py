@@ -253,7 +253,11 @@ class edModelVar(nn.Module):
                     X[(i + 1) % 2])
             ) / (
                 self.sigma[i]
-                + self.sigma[(i + 1) % 2] * corr.sum((i + 1) % 2).reshape(-1, 1)
+                + self.sigma[(i + 1) % 2] * (
+                    corr.sum((i + 1) % 2).to_dense()
+                    if corr.is_sparse else
+                    corr.sum((i + 1) % 2)
+                ).reshape(-1, 1)
             )
             for i in range(self.num_modalities)
         ]

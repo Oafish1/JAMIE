@@ -716,3 +716,18 @@ class SimpleJAMIEModel(nn.Module):
         reconstructed = [self.decoders[i](combined[i]) for i in range(self.num_modalities)]
 
         return embedded, reconstructed
+
+
+def sparse_index(mat, idx0, idx1):
+    # Filter indices
+    if mat.is_sparse:
+        mat_idx_mask0 = torch.isin(mat.indices()[0], idx0)
+        mat_idx_mask1 = torch.isin(mat.indices()[1], idx1)
+        mat_idx_mask = mat_idx_mask0*mat_idx_mask1
+        mat_idx_filt = mat.indices()[:, mat_idx_mask]
+        sub_mat = torch.zeros(idx0.shape[0], idx1.shape[0], device=mat.device)
+        sub_mat_idx0 = np.vectorize(lambda x: np.argwhere(x == idx0.cpu())[0, 0], otypes='d')(mat_idx_filt[0].cpu())
+        sub_mat_idx1 = np.vectorize(lambda x: np.argwhere(x == idx1.cpu())[0, 0], otypes='d')(mat_idx_filt[1].cpu())
+        sub_mat[sub_mat_idx0, sub_mat_idx1] = mat.values()[mat_idx_mask]
+    else: sub_mat = mat[idx0][:, idx1]
+    return sub_mat
