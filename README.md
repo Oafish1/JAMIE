@@ -103,7 +103,7 @@ Several arguments may be passed to `JAMIE`, including:
 - `min_epochs = 2,500`: Number of epochs before early stopping can take effect.  Also controls the length of KL annealing.
 - `dropout = 0.6`: Amount of dropout in JAMIE model.  Generally should be `0` for pure integration models and `0.6` for everything else.
 - `debug = False`: Print individual loss values.
-- `device = 'cpu': Device to run on. For GPU, use `'cuda'`.
+- `device = 'cpu'`: Device to run on. For GPU, use `'cuda'`.
 
 The model can be saved and loaded in an `h5` file format
 ```python
